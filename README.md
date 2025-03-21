@@ -1,107 +1,125 @@
-# FlatFileDB Dokumentation
+FlatFileDB Documentation
+========================
 
-# FlatFileDB: Eine einfache dateibasierte Datenbanklösung für PHP
+FlatFileDB: A Simple File-Based Database Solution for PHP
+=========================================================
 
-## Einführung
+Introduction
+------------
 
-FlatFileDB ist eine leichtgewichtige, dateibasierte Datenbanklösung für PHP-Anwendungen, die ohne externe Datenbankserver wie MySQL oder PostgreSQL auskommt. Dieses System eignet sich hervorragend für kleinere bis mittelgroße Projekte, bei denen der Aufwand für die Einrichtung und Wartung einer vollwertigen Datenbank unverhältnismäßig wäre.
+FlatFileDB is a lightweight, file-based database solution for PHP applications that requires no external database servers such as MySQL or PostgreSQL. This system is perfect for small to medium-sized projects where setting up and maintaining a full-fledged database would be disproportionate in terms of effort.
 
-### Warum FlatFileDB?
+### Why FlatFileDB?
 
-- **Einfache Installation**: Keine komplexe Serverkonfiguration notwendig - einfach die PHP-Klassen einbinden und loslegen.
-- **Portabilität**: Die gesamte Datenbank besteht aus einfachen Dateien, die leicht zwischen verschiedenen Umgebungen übertragen werden können.
-- **Keine Abhängigkeiten**: Funktioniert ohne externe Bibliotheken oder Dienste.
-- **Transparenz**: Datensätze werden in lesbaren JSON-Lines-Dateien gespeichert, was die Fehlerbehebung und manuelle Eingriffe erleichtert.
-- **Performance**: Durch die Indexierung bleibt der Zugriff auch bei größeren Datensätzen effizient.
+-   **Easy Installation**: No complex server configuration needed -- simply include the PHP classes and get started.
+-   **Portability**: The entire database consists of plain files, which can be easily moved between different environments.
+-   **No Dependencies**: Works without external libraries or services.
+-   **Transparency**: Records are stored in readable JSON-lines files, making debugging and manual intervention straightforward.
+-   **Performance**: Indexing ensures that data access remains efficient even with larger datasets.
 
-### Anwendungsfälle
+### Use Cases
 
-FlatFileDB eignet sich besonders für:
-- Prototypen und Proof-of-Concept-Anwendungen
-- Kleine Webanwendungen mit begrenztem Datenaufkommen
-- Lokale Tools und Utilities
-- Projekte mit eingeschränkten Serverressourcen
-- Bildungsumgebungen zum Erlernen von Datenbankkonzepten
+FlatFileDB is particularly suitable for:
 
-### Technische Grundlagen
+-   Prototypes and proof-of-concept applications
+-   Small web applications with limited data volume
+-   Local tools and utilities
+-   Projects with restricted server resources
+-   Educational settings to learn about database concepts
 
-FlatFileDB basiert auf folgenden Prinzipien:
-- Datenspeicherung in JSON-Lines-Format (ein JSON-Objekt pro Zeile)
-- Indexierung von Datensätzen zur Beschleunigung des Zugriffs
-- Transaktionssicheres Logging für die Nachvollziehbarkeit von Änderungen
-- Schemas zur Validierung von Datensätzen
+### Technical Fundamentals
 
-Die Implementierung erfolgt vollständig in PHP und kann daher in jeder Umgebung mit PHP-Unterstützung eingesetzt werden.
+FlatFileDB is based on the following principles:
 
----
+-   Data stored in JSON-lines format (one JSON object per line)
+-   Indexing of records to speed up access
+-   Transaction-safe logging for traceability of changes
+-   Schemas for validating records
 
-## 1. Überblick und Vorbereitung
+It is fully implemented in PHP and can be used in any environment that supports PHP.
 
-FlatFileDB ist eine einfache, dateibasierte Datenbank, die Datensätze in JSON-Lines-Dateien speichert. Zu den wichtigsten Features gehören:
+* * * * *
 
-- **CRUD-Operationen**: Datensätze einfügen, aktualisieren, löschen und abrufen.
-- **Index-Verwaltung**: Ein interner Index ordnet Datensatz-IDs den Byte-Offets in der Datei zu. Damit bleibt der Zugriff auch bei großen Dateien effizient.
-- **Transaktions-Logging**: Jede Operation wird in einem Log festgehalten, was besonders bei Fehlern oder zur Nachvollziehbarkeit hilfreich ist.
-- **Kompaktierung**: Überflüssige (gelöschte oder veraltete) Datensätze können aus der Datei entfernt und der Index neu aufgebaut werden.
+1\. Overview and Preparation
+----------------------------
 
-Bevor du startest, solltest du folgende Dateien in deinem Projekt haben:
-- FlatFileDB.php (enthält alle Klassen: FlatFileDatabase, FlatFileTableEngine, etc.)
-- Eine Datei, in der du deine Anwendungslogik schreibst (z. B. testdb.php)
+FlatFileDB is a simple file-based database that stores records in JSON-lines files. Its key features include:
 
-## 2. Einbinden und Initialisieren der Datenbank
+-   **CRUD Operations**: Insert, update, delete, and retrieve records.
+-   **Index Management**: An internal index maps record IDs to byte offsets in the file, ensuring efficient access even with large files.
+-   **Transaction Logging**: Each operation is logged, which is particularly useful for error tracing or auditing.
+-   **Compaction**: Redundant (deleted or outdated) records can be removed from the file, and the index can be rebuilt.
 
-Zuerst bindest du die Datenbank-Klassen ein und erstellst eine Instanz der Datenbank. Dabei kannst du optional festlegen, ob der Index nach jedem Schreibvorgang automatisch in die Datei geschrieben werden soll (Parameter autoCommitIndex).
+Before you start, you should have the following files in your project:
 
-Beispiel:
+-   FlatFileDB.php (contains all classes: FlatFileDatabase, FlatFileTableEngine, etc.)
+-   A file in which you write your application logic (e.g. testdb.php)
 
-```php
-<?php
+2\. Including and Initializing the Database
+-------------------------------------------
+
+First, include the database classes and create a database instance. You can optionally specify whether the index should be automatically committed to file after every write operation (the `autoCommitIndex` parameter).
+
+Example:
+
+php
+
+KopierenBearbeiten
+
+`<?php
 // testdb.php
 
-// Fehleranzeige aktivieren (nur in der Entwicklung)
+// Enable error display (development only)
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-// FlatFileDB einbinden
-require_once 'FlatFileDB.php'; // Enthält alle Klassen (Namespace: FlatFileDB)
+// Include FlatFileDB
+require_once 'FlatFileDB.php'; // Contains all classes (Namespace: FlatFileDB)
 
-// Nutzung der Klassen per "use"
+// Use the classes with "use"
 use FlatFileDB\FlatFileDatabase;
 use FlatFileDB\FlatFileDBConstants;
 
-// Erstelle eine Datenbankinstanz und wähle z. B. autoCommitIndex = false (du kannst das später über commitAllIndexes() manuell auslösen)
+// Create a database instance and, for example, choose autoCommitIndex = false
+// (you can trigger it manually later using commitAllIndexes())
 $db = new FlatFileDatabase(FlatFileDBConstants::DEFAULT_BASE_DIR, false);
 
-// Registriere Tabellen – im Beispiel registrieren wir die Tabellen "users" und "products"
-$db->registerTables(['users', 'products']);
-```
+// Register tables -- for example, here we register the "users" and "products" tables
+$db->registerTables(['users', 'products']);`
 
-## 3. Definieren des Schemas
+3\. Defining the Schema
+-----------------------
 
-Für jede Tabelle kannst du ein Schema festlegen. Das Schema definiert Pflichtfelder und die erwarteten Datentypen. Das ist besonders hilfreich, um sicherzustellen, dass nur valide Datensätze in die Datenbank gelangen.
+For each table, you can define a schema. The schema specifies required fields and expected data types. This is especially helpful to ensure that only valid records make it into the database.
 
-Beispiel:
+Example:
 
-```php
-// Für die Tabelle "users" definieren wir, dass 'name' und 'email' Pflichtfelder sind.
-// Außerdem erwarten wir, dass 'name' und 'email' Strings sind und 'age' als Integer.
+php
+
+KopierenBearbeiten
+
+`// For the "users" table, we define that 'name' and 'email' are required fields.
+// We also specify that 'name' and 'email' are strings, and 'age' is an integer.
 $db->table('users')->setSchema(
     ['name', 'email'],
     ['name' => 'string', 'email' => 'string', 'age' => 'int']
-);
-```
+);`
 
-## 4. CRUD-Operationen
+4\. CRUD Operations
+-------------------
 
-### a) Datensatz einfügen (Insert)
+### a) Inserting a Record (Insert)
 
-Mit der Methode insertRecord() fügst du einen neuen Datensatz ein. Wichtig ist, dass die ID eindeutig sein muss.
+Use the `insertRecord()` method to add a new record. It's important that the ID is unique.
 
-Beispiel:
+Example:
 
-```php
-// Neuen Benutzer einfügen
+php
+
+KopierenBearbeiten
+
+`// Insert a new user
 $success = $db->table('users')->insertRecord('user123', [
     'name'  => 'Alice Johnson',
     'email' => 'alice@example.com',
@@ -109,24 +127,26 @@ $success = $db->table('users')->insertRecord('user123', [
 ]);
 
 if ($success) {
-    echo "Benutzer erfolgreich eingefügt.";
+    echo "User successfully inserted.";
 } else {
-    echo "Fehler: Ein Benutzer mit dieser ID existiert bereits.";
+    echo "Error: A user with this ID already exists.";
 }
 
-// Nach dem Schreibvorgang wird der Index manuell commitet,
-// damit beim Neuladen der Seite die aktuelle Index-Datei genutzt wird.
-$db->commitAllIndexes();
-```
+// After writing, manually commit the index
+// so the current index file is used on page reload
+$db->commitAllIndexes();`
 
-### b) Datensatz aktualisieren (Update)
+### b) Updating a Record (Update)
 
-Mit updateRecord() wird ein bestehender Datensatz aktualisiert. Dabei werden alte Datensätze als gelöscht markiert und ein neuer Eintrag wird angehängt.
+Use `updateRecord()` to update an existing record. Older versions of the record are marked as deleted, and a new entry is appended.
 
-Beispiel:
+Example:
 
-```php
-// Bestehenden Benutzer aktualisieren
+php
+
+KopierenBearbeiten
+
+`// Update an existing user
 $success = $db->table('users')->updateRecord('user123', [
     'name'  => 'Alice J.',
     'email' => 'alice_j@example.com',
@@ -134,115 +154,135 @@ $success = $db->table('users')->updateRecord('user123', [
 ]);
 
 if ($success) {
-    echo "Benutzer erfolgreich aktualisiert.";
+    echo "User successfully updated.";
 } else {
-    echo "Fehler: Benutzer wurde nicht gefunden.";
+    echo "Error: User not found.";
 }
 
-// Index aktualisieren
-$db->commitAllIndexes();
-```
+// Commit the index
+$db->commitAllIndexes();`
 
-### c) Datensatz löschen (Delete)
+### c) Deleting a Record (Delete)
 
-Mit deleteRecord() wird ein Datensatz gelöscht, indem der Datensatz als gelöscht markiert wird. Auch hier wird der Index angepasst.
+Use `deleteRecord()` to delete a record. The record is marked as deleted, and the index is updated accordingly.
 
-Beispiel:
+Example:
 
-```php
-// Benutzer löschen
+php
+
+KopierenBearbeiten
+
+`// Delete a user
 $success = $db->table('users')->deleteRecord('user123');
 
 if ($success) {
-    echo "Benutzer erfolgreich gelöscht.";
+    echo "User successfully deleted.";
 } else {
-    echo "Fehler: Benutzer konnte nicht gefunden werden.";
+    echo "Error: User could not be found.";
 }
 
-// Index speichern
-$db->commitAllIndexes();
-```
+// Save the index
+$db->commitAllIndexes();`
 
-### d) Datensatz abrufen (Select)
+### d) Retrieving a Record (Select)
 
-Um einen einzelnen Datensatz abzurufen, nutzt du selectRecord(), während selectAllRecords() alle aktiven (nicht gelöschten) Datensätze liefert.
+Use `selectRecord()` to retrieve a single record, and `selectAllRecords()` to fetch all active (non-deleted) records.
 
-Beispiel:
+Example:
 
-```php
-// Einzelnen Benutzer abrufen
+php
+
+KopierenBearbeiten
+
+`// Retrieve a single user
 $user = $db->table('users')->selectRecord('user123');
 if ($user) {
     print_r($user);
 } else {
-    echo "Benutzer nicht gefunden.";
+    echo "User not found.";
 }
 
-// Alle aktiven Benutzer abrufen
+// Retrieve all active users
 $allUsers = $db->table('users')->selectAllRecords();
 foreach ($allUsers as $user) {
     echo "ID: {$user['id']}, Name: {$user['name']}<br>";
-}
-```
+}`
 
-## 5. Weitere Funktionen
+5\. Additional Functions
+------------------------
 
-### a) Index-Management
+### a) Index Management
 
 **commitAllIndexes()**:
-- Diese Methode speichert alle in-Memory-Indizes in die jeweiligen Index-Dateien.
-- Nutzen: Rufe sie nach jeder Schreiboperation (Insert, Update, Delete) auf, wenn du autoCommitIndex auf false gesetzt hast.
+
+-   This method saves all in-memory indexes to their corresponding index files.
+-   Usage: Call it after each write operation (insert, update, delete) if you have set `autoCommitIndex` to false.
 
 **compactTable()**:
-- Dieser Vorgang „säubert" die Datendatei, indem veraltete und gelöschte Einträge entfernt werden und der Index neu aufgebaut wird.
-- Nutzen: Führe die Kompaktierung eher manuell oder periodisch aus, da dieser Prozess relativ aufwändig ist.
 
-Beispiel:
+-   This operation "cleans up" the data file by removing outdated and deleted entries and rebuilding the index.
+-   Usage: Run compaction manually or periodically, as it can be relatively intensive.
 
-```php
-$db->table('users')->compactTable();
-echo "Tabelle 'users' wurde kompaktiert.";
-```
+Example:
 
-### b) Backup und Datenbank leeren
+php
 
-**Backup erstellen**:
-- Mit createBackup($backupDir) kannst du alle Tabellen sichern.
+KopierenBearbeiten
 
-Beispiel:
+`$db->table('users')->compactTable();
+echo "Table 'users' has been compacted.";`
 
-```php
-$backupResults = $db->createBackup(FlatFileDBConstants::DEFAULT_BACKUP_DIR);
-echo "Backup wurde erstellt.";
-```
+### b) Backup and Clearing the Database
 
-**Datenbank leeren**:
-- Mit clearDatabase() werden alle Daten, Indizes und Logs gelöscht.
+**Creating a Backup**:
 
-Beispiel:
+-   Use `createBackup($backupDir)` to back up all tables.
 
-```php
-$db->clearDatabase();
-echo "Die Datenbank wurde geleert.";
-```
+Example:
 
-## 6. Einbinden in dein HTML-Interface
+php
 
-Typischerweise kombinierst du die oben genannten Operationen mit einem HTML-Formular, um Benutzerinteraktionen zu ermöglichen. Ein Beispiel-Workflow könnte folgendermaßen aussehen:
+KopierenBearbeiten
 
-**Formular über POST abschicken**:
-- Jede Aktion (Insert, Update, Delete, Suche, Backup, Kompaktierung) wird über ein verstecktes Feld action definiert, z. B.:
+`$backupResults = $db->createBackup(FlatFileDBConstants::DEFAULT_BACKUP_DIR);
+echo "Backup has been created.";`
 
-```html
-<form method="post">
+**Clearing the Database**:
+
+-   Use `clearDatabase()` to delete all data, indexes, and logs.
+
+Example:
+
+php
+
+KopierenBearbeiten
+
+`$db->clearDatabase();
+echo "The database has been cleared.";`
+
+6\. Integrating into Your HTML Interface
+----------------------------------------
+
+Typically, you combine the operations described above with an HTML form to allow user interactions. A sample workflow might look like this:
+
+**Submitting a Form via POST**:
+
+-   Each action (insert, update, delete, search, backup, compaction) is defined by a hidden field `action`, for example:
+
+html
+
+KopierenBearbeiten
+
+`<form method="post">
     <input type="hidden" name="action" value="insert_user">
-    <!-- Weitere Felder für Benutzer-ID, Name, etc. -->
-    <button type="submit">Benutzer hinzufügen</button>
-</form>
-```
+    <!-- Other fields for user ID, name, etc. -->
+    <button type="submit">Add User</button>
+</form>`
 
-**PHP-Logik ausführen**:
-- Im PHP-Code liest du den Wert von $_POST['action'] aus und führst den entsprechenden Case im Switch-Statement aus (wie in den Beispielen weiter oben).
+**Executing the PHP Logic**:
 
-**Feedback und Aktualisierung**:
-- Nach der Operation commitest du den Index (oder führst ggf. eine Kompaktierung durch) und gibst eine Erfolgsmeldung zurück. Bei einem Seitenreload werden die aktuellen Daten aus der Datei (bzw. aus dem persistierten Index) geladen.
+-   In your PHP code, read `$_POST['action']` and run the corresponding case in a switch statement (as in the examples above).
+
+**Feedback and Updates**:
+
+-   After the operation, commit the index (or optionally compact the table). Then display a success message. On page reload, the current data is loaded from the file (or from the persisted index).
