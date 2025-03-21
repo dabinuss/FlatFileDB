@@ -12,7 +12,6 @@ use Throwable;
  */
 class FlatFileIndexBuilder
 {
-    /** @var array<string, int> $indexData */
     private array $indexData = [];
     private bool $indexDirty = false;
     private FlatFileConfig $config;
@@ -33,7 +32,7 @@ class FlatFileIndexBuilder
     private function loadIndex(): void
     {
         $indexFile = $this->config->getIndexFile();
-    
+
         if (!file_exists($indexFile)) {
             $indexDir = dirname($indexFile);
             if (!is_dir($indexDir) && !mkdir($indexDir, 0755, true)) {
@@ -42,37 +41,47 @@ class FlatFileIndexBuilder
             $this->indexData = [];
             return;
         }
-    
+
         $handle = fopen($indexFile, 'rb'); // Open for reading
         if (!$handle) {
             throw new RuntimeException("Indexdatei konnte nicht geöffnet werden.");
         }
-    
+
         try {
             if (!flock($handle, LOCK_SH)) { // Shared lock for reading
                 throw new RuntimeException("Konnte keine Lesesperre für die Indexdatei erhalten.");
             }
-    
+
             $content = '';
             while (!feof($handle)) {
                 $content .= fread($handle, 8192); // Read in chunks
             }
-    
+
             if ($content === '') {
                 $this->indexData = []; // Empty file is valid
                 return;
             }
-    
+
             $this->indexData = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+
+            // Check for null *before* is_array
+            if ($this->indexData === null) {
+                throw new JsonException("Ungültiges Indexdateiformat (json_decode returned null)");
+            }
+
             if (!is_array($this->indexData)) {
                 throw new JsonException("Ungültiges Indexdateiformat");
             }
-    
+
+
         } catch (JsonException $e) {
             // Bei einem Fehler im JSON-Format erstellen wir ein Backup und setzen den Index zurück
             $backupFile = $indexFile . '.corrupted.' . time();
             if (file_exists($indexFile)) {
-                rename($indexFile, $backupFile); // Atomic rename for backup
+                // Attempt atomic rename, but handle failure.
+                if(!rename($indexFile, $backupFile)){
+                    throw new RuntimeException("Fehler beim Laden des Index: " . $e->getMessage() . ".  Ein Backup der beschädigten Datei konnte nicht erstellt werden.", 0, $e);
+                }
             }
             $this->indexData = [];
              throw new RuntimeException("Fehler beim Laden des Index: " . $e->getMessage() . ".  Ein Backup der beschädigten Datei wurde erstellt.", 0, $e); // Re-throw with more context
@@ -92,21 +101,21 @@ class FlatFileIndexBuilder
         if ($this->indexDirty) {
             $indexFile = $this->config->getIndexFile();
             $tmpFile = $indexFile . '.tmp'; // Use a temporary file
-    
+
             try {
                 // Write to the temporary file
                 $encoded = json_encode($this->indexData, JSON_THROW_ON_ERROR);
                 $result = file_put_contents($tmpFile, $encoded); // No LOCK_EX needed here
-    
+
                 if ($result === false) {
                     throw new RuntimeException("Index-Datei konnte nicht geschrieben werden.");
                 }
-    
+
                 // Atomically replace the old index file
                 if (!rename($tmpFile, $indexFile)) {
                     throw new RuntimeException("Temporäre Indexdatei konnte nicht umbenannt werden.");
                 }
-    
+
                 $this->indexDirty = false;
             } catch (Throwable $e) {
                 // Cleanup:  Delete the temp file if something went wrong.
@@ -128,9 +137,8 @@ class FlatFileIndexBuilder
     {
         $this->indexData[(string)$recordId] = $offset;
         $this->indexDirty = true;
-        if ($this->config->autoCommitIndex()) {
-            $this->commitIndex();
-        }
+        // Immer speichern
+        $this->commitIndex();
     }
     
     /**
@@ -142,9 +150,8 @@ class FlatFileIndexBuilder
     {
         unset($this->indexData[(string)$recordId]);
         $this->indexDirty = true;
-        if ($this->config->autoCommitIndex()) {
-            $this->commitIndex();
-        }
+        // Immer speichern
+        $this->commitIndex();
     }
     
     /**
@@ -198,8 +205,7 @@ class FlatFileIndexBuilder
     {
         $this->indexData = $newIndex;
         $this->indexDirty = true;
-        if ($this->config->autoCommitIndex()) {
-            $this->commitIndex();
-        }
+        //Immer speichern
+        $this->commitIndex();
     }
 }

@@ -21,7 +21,7 @@ class FlatFileDatabase
      * @param string $baseDir Basisverzeichnis für die Datenbankdateien (Standard: FlatFileDBConstants::DEFAULT_BASE_DIR)
      * @param bool $autoCommitIndex Ob der Index automatisch gespeichert werden soll
      */
-    public function __construct(string $baseDir = FlatFileDBConstants::DEFAULT_BASE_DIR, bool $autoCommitIndex = false)
+    public function __construct(string $baseDir = FlatFileDBConstants::DEFAULT_BASE_DIR)
     {
         $baseDir = rtrim($baseDir, '/');
 
@@ -32,17 +32,19 @@ class FlatFileDatabase
         }
 
         $this->baseDir = $baseDir;
-        $this->autoCommitIndex = $autoCommitIndex;
+        //$this->autoCommitIndex = $autoCommitIndex; // Entfernt
         $this->logFile = "{$this->baseDir}/database.log";
-        
+
         if (!is_dir($this->baseDir)) {
             if (!mkdir($this->baseDir, 0755, true)) {
                 throw new RuntimeException("Datenbank-Verzeichnis '{$this->baseDir}' konnte nicht erstellt werden.");
             }
         }
 
+        //Vereinheitlichte Überprüfung
         $realPath = realpath($this->baseDir);
-        if ($realPath === false) {
+        if ($realPath === false)
+        {
             throw new RuntimeException("Could not resolve real path for '{$this->baseDir}'");
         }
         $this->baseDir = $realPath;
@@ -59,20 +61,21 @@ class FlatFileDatabase
         if (!FlatFileValidator::isValidId($tableName)) {
             throw new InvalidArgumentException("Tabellenname '$tableName' ist ungültig.");
         }
-    
+
         $dataFile  = "{$this->baseDir}/{$tableName}_data" . FlatFileDBConstants::DATA_FILE_EXTENSION;
         $indexFile = "{$this->baseDir}/{$tableName}_index" . FlatFileDBConstants::INDEX_FILE_EXTENSION;
         $logFile   = "{$this->baseDir}/{$tableName}_log" . FlatFileDBConstants::LOG_FILE_EXTENSION;
-    
-        $config = new FlatFileConfig($dataFile, $indexFile, $logFile, $this->autoCommitIndex);
-    
+
+        // autoCommitIndex wird immer auf true gesetzt.
+        $config = new FlatFileConfig($dataFile, $indexFile, $logFile, true);
+
         try {
             $this->tables[$tableName] = new FlatFileTableEngine($config);
         } catch (Throwable $e) {
             unset($this->tables[$tableName]); // Remove the entry if creation fails
             throw new RuntimeException("Fehler beim Registrieren der Tabelle '$tableName': " . $e->getMessage(), 0, $e);
         }
-        return $this->tables[$tableName];
+        return $this->tables[$tableName]; // Return the engine instance
     }
     
     /**
@@ -138,7 +141,7 @@ class FlatFileDatabase
                 $engine->compactTable();
                 $results[$tableName] = true;
             } catch (Throwable $e) {
-                $results[$tableName] = false;
+                $results[$tableName] = "Compaction failed: " . $e->getMessage();
             }
         }
         
@@ -197,7 +200,7 @@ class FlatFileDatabase
                 $errors[$tableName] = $e->getMessage();
             }
         }
-    
+
         if (!empty($errors)) {
             // Report all errors
             $errorMessage = "Errors occurred while clearing the database:\n";

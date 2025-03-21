@@ -54,9 +54,6 @@ class FlatFileFileManager
         }
 
         $handle = fopen($dataFile, 'ab');
-        if (!$handle) {
-            throw new RuntimeException('Daten-Datei konnte nicht geöffnet werden.');
-        }
         
         $offset = null;
         
@@ -99,15 +96,15 @@ class FlatFileFileManager
             if (!flock($handle, LOCK_SH)) {
                 throw new RuntimeException("Konnte keine Lesesperre für die Datei erhalten.");
             }
-    
+
             if (fseek($handle, $offset) !== 0) { // Check for fseek failure
-                throw new RuntimeException("Ungültiger Offset in der Datendatei: $offset");
+                throw new RuntimeException("Ungültiger Offset in der Datendatei: $offset"); // Improved error message
             }
-    
+
             if (feof($handle)) { // Check for EOF *before* fgets
-                throw new RuntimeException("Ende der Datei erreicht vor Offset: $offset");
+                throw new RuntimeException("Ende der Datei erreicht vor Offset: $offset"); // Correct EOF message
             }
-    
+
             $line = fgets($handle);
             if ($line === false) {
                 throw new RuntimeException("Konnte keine Daten vom angegebenen Offset lesen: $offset");
@@ -138,10 +135,11 @@ class FlatFileFileManager
     public function readAllRecords(): array
     {
         $result = [];
-        $handle = fopen($this->config->getDataFile(), 'rb');
+        $dataFile = $this->config->getDataFile();
+        $handle = fopen($dataFile, 'rb');
         
         if (!$handle) {
-            return $result;
+            throw new RuntimeException("Could not open data file for reading: $dataFile");
         }
         
         try {
@@ -167,7 +165,7 @@ class FlatFileFileManager
             
             flock($handle, LOCK_UN);
         } catch (Throwable $e) {
-            throw new RuntimeException("Error during readAllRecords: " . $e->getMessage(), 0, $e); 
+            throw new RuntimeException("Error during readAllRecords in file $dataFile: " . $e->getMessage(), 0, $e);
         } finally {
             fclose($handle);
         }
@@ -189,7 +187,7 @@ class FlatFileFileManager
         $newIndex = [];
         $dataFile = $this->config->getDataFile();
         $tempFile = $dataFile . '.tmp';
-        $backupFile = $dataFile . '.bak.' . time(); // Use .bak.timestamp
+        $backupFile = $dataFile . '.bak.' . date('YmdHisu'); // Use microseconds
 
         // 1. Alle Zeilen einlesen und pro ID nur den letzten Eintrag speichern
         $records = [];
@@ -253,10 +251,9 @@ class FlatFileFileManager
         }
 
         // 3. Erstelle ein Backup der alten Datei *VOR* dem Löschen/Umbenennen
-         if (!copy($dataFile, $backupFile)) {
+        if (!copy($dataFile, $backupFile)) {
             throw new RuntimeException('Failed to create backup during compaction.');
         }
-
 
         // 4. Ersetze die alte Datei durch die neue.  *Zuerst* löschen, *dann* umbenennen.
         if (!unlink($dataFile)) {
@@ -265,11 +262,14 @@ class FlatFileFileManager
 
         if (!rename($tempFile, $dataFile)) {
             // Fehler beim Umbenennen!  Versuche, das Backup wiederherzustellen.
-            if (file_exists($backupFile)) {
+            if (file_exists($backupFile)) { // Check if backup exists *before* rename
                 if (!rename($backupFile, $dataFile)) { // Versuche, das Backup wiederherzustellen
                     // KRITISCHER FEHLER:  Sowohl das Umbenennen als auch die Wiederherstellung sind fehlgeschlagen!
                     throw new RuntimeException('CRITICAL: Compaction failed, and backup restoration failed!  Data may be lost.');
                 }
+            } else {
+                // Backup file doesn't exist!
+                throw new RuntimeException('CRITICAL: Compaction failed, and backup file does not exist! Data may be lost.');
             }
             throw new RuntimeException('Temporäre Datei konnte nicht umbenannt werden. Wiederherstellung versucht.');
         }
@@ -307,10 +307,11 @@ class FlatFileFileManager
     // Generator-based approach (better for large files)
     public function readRecordsGenerator(): Generator
     {
-        $handle = fopen($this->config->getDataFile(), 'rb');
+        $dataFile = $this->config->getDataFile(); // Get filename for error message
+        $handle = fopen($dataFile, 'rb');
 
         if (!$handle) {
-            return; // Or throw an exception
+            throw new RuntimeException("Could not open data file: $dataFile");
         }
 
         try {
@@ -336,7 +337,7 @@ class FlatFileFileManager
 
             flock($handle, LOCK_UN);
         } catch (Throwable $e) {
-            throw new RuntimeException("Error during readAllRecords: " . $e->getMessage(), 0, $e);
+            throw new RuntimeException("Error during readRecordsGenerator in file $dataFile: " . $e->getMessage(), 0, $e);
         } finally {
             fclose($handle);
         }

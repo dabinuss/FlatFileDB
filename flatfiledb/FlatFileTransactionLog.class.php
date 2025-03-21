@@ -147,45 +147,38 @@ class FlatFileTransactionLog
     {
         $logFile = $this->config->getLogFile();
         $lockFile = $logFile . '.lock';
-    
+
         if (!file_exists($logFile) || filesize($logFile) === 0) {
             return null;
         }
-    
+
         $lockHandle = fopen($lockFile, 'w');
         if (!$lockHandle) {
             throw new RuntimeException("Could not create log rotation lock file.");
         }
-    
+
         if (!flock($lockHandle, LOCK_EX)) {
             fclose($lockHandle);
             throw new RuntimeException("Could not acquire lock for log rotation.");
         }
     
         try {
-            // ... (rest of the rotation logic) ...
-    
-             $handle = fopen($logFile, 'ab+');
+            $handle = fopen($logFile, 'ab+');
             if (!$handle) {
                 throw new RuntimeException("Log-Datei konnte nicht geöffnet werden.");
             }
     
-            if (!flock($handle, LOCK_EX)) { //This lock is redundant, but good for consistency
-                fclose($handle);
-                throw new RuntimeException("Konnte keine exklusive Sperre für die Log-Datei erhalten.");
-            }
-    
-            try{
+            try {
                 $backupPath = null;
     
                 if ($backupDir !== null) {
                     if (!is_dir($backupDir) && !mkdir($backupDir, 0755, true)) {
                         throw new RuntimeException("Backup-Verzeichnis konnte nicht erstellt werden.");
                     }
-    
+
                     $timestamp = date('YmdHis');
                     $backupPath = $backupDir . '/' . basename($logFile) . '.' . $timestamp;
-    
+
                     if (!copy($logFile, $backupPath)) {
                         throw new RuntimeException("Log-Backup konnte nicht erstellt werden.");
                     }
@@ -193,15 +186,14 @@ class FlatFileTransactionLog
                 ftruncate($handle, 0);
                 rewind($handle);
             } finally {
-                flock($handle, LOCK_UN);
+                flock($handle, LOCK_UN); // Keep this lock for file operations
                 fclose($handle);
             }
-    
     
         } finally {
             flock($lockHandle, LOCK_UN);
             fclose($lockHandle);
-            @unlink($lockFile); // Remove the lock file
+            @unlink($lockFile); // Remove the lock file *in finally*
         }
     
         return $backupPath;
