@@ -50,7 +50,16 @@ class FlatFileValidator
                     'numeric' => is_numeric($data[$field]),
                     default => throw new InvalidArgumentException("Unbekannter Typ '$type' für Feld '$field'")
                 };
-                
+
+                if ($type === 'int' && is_string($data[$field]) && !ctype_digit($data[$field])) {
+                    throw new InvalidArgumentException("Feld '$field' muss eine ganze Zahl sein (string representation).");
+                }
+              
+                // Cast and compare (for actual integers)
+                if ($type === 'int' && (!is_int($data[$field]) || (int)$data[$field] !== $data[$field])) {
+                    throw new InvalidArgumentException("Feld '$field' muss eine ganze Zahl sein.");
+                }
+
                 if (!$validType) {
                     throw new InvalidArgumentException("Feld '$field' hat nicht den erwarteten Typ '$type'");
                 }

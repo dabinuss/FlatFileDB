@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace FlatFileDB;
 
+use Generator;
 use RuntimeException;
 use JsonException;
 use Throwable;
@@ -42,7 +43,17 @@ class FlatFileFileManager
      */
     public function appendRecord(array $record): int
     {
-        $handle = fopen($this->config->getDataFile(), 'ab');
+
+        $dataFile = $this->config->getDataFile();
+
+        // Check if the file exists.  If not, create it.
+        if (!file_exists($dataFile)) {
+            if (!touch($dataFile)) {
+                throw new RuntimeException("Data file '$dataFile' does not exist and could not be created.");
+            }
+        }
+
+        $handle = fopen($dataFile, 'ab');
         if (!$handle) {
             throw new RuntimeException('Daten-Datei konnte nicht geöffnet werden.');
         }
@@ -88,11 +99,15 @@ class FlatFileFileManager
             if (!flock($handle, LOCK_SH)) {
                 throw new RuntimeException("Konnte keine Lesesperre für die Datei erhalten.");
             }
-            
-            if (fseek($handle, $offset) !== 0) {
+    
+            if (fseek($handle, $offset) !== 0) { // Check for fseek failure
                 throw new RuntimeException("Ungültiger Offset in der Datendatei: $offset");
             }
-            
+    
+            if (feof($handle)) { // Check for EOF *before* fgets
+                throw new RuntimeException("Ende der Datei erreicht vor Offset: $offset");
+            }
+    
             $line = fgets($handle);
             if ($line === false) {
                 throw new RuntimeException("Konnte keine Daten vom angegebenen Offset lesen: $offset");
@@ -174,19 +189,20 @@ class FlatFileFileManager
         $newIndex = [];
         $dataFile = $this->config->getDataFile();
         $tempFile = $dataFile . '.tmp';
-        
+        $backupFile = $dataFile . '.bak.' . time(); // Use .bak.timestamp
+
         // 1. Alle Zeilen einlesen und pro ID nur den letzten Eintrag speichern
         $records = [];
         $readHandle = fopen($dataFile, 'rb');
         if (!$readHandle) {
             throw new RuntimeException('Fehler beim Öffnen der Daten-Datei.');
         }
-        
+
         try {
             if (!flock($readHandle, LOCK_SH)) {
                 throw new RuntimeException("Konnte keine Lesesperre für die Datei erhalten.");
             }
-            
+
             while (($line = fgets($readHandle)) !== false) {
                 try {
                     $decoded = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
@@ -199,61 +215,68 @@ class FlatFileFileManager
                     continue;
                 }
             }
-            
+
             flock($readHandle, LOCK_UN);
         } finally {
             fclose($readHandle);
         }
-        
+
         // 2. Schreibe nur die aktiven (nicht gelöschten) Datensätze in die temporäre Datei
         $writeHandle = fopen($tempFile, 'wb');
         if (!$writeHandle) {
             throw new RuntimeException('Fehler beim Öffnen der temporären Datei.');
         }
-        
+
         try {
             if (!flock($writeHandle, LOCK_EX)) {
                 throw new RuntimeException("Konnte keine Schreibsperre für die temporäre Datei erhalten.");
             }
-            
+
             foreach ($records as $id => $record) {
                 // Überspringe den Datensatz, wenn er als gelöscht markiert ist
                 if (!empty($record['_deleted'])) {
                     continue;
                 }
-                
+
                 $offsetInNewFile = ftell($writeHandle);
                 $encoded = json_encode($record, JSON_THROW_ON_ERROR);
                 if (fwrite($writeHandle, $encoded . "\n") === false) {
                     throw new RuntimeException('Fehler beim Schreiben während der Kompaktierung.');
                 }
-                
+
                 $newIndex[(string)$id] = $offsetInNewFile;
             }
-            
+
             flock($writeHandle, LOCK_UN);
         } finally {
             fclose($writeHandle);
         }
-        
-        // 3. Erstelle ein Backup der alten Datei
-        $backupFile = $dataFile . '.bak.' . time();
-        if (!copy($dataFile, $backupFile)) {
+
+        // 3. Erstelle ein Backup der alten Datei *VOR* dem Löschen/Umbenennen
+         if (!copy($dataFile, $backupFile)) {
             throw new RuntimeException('Failed to create backup during compaction.');
         }
-        
-        // 4. Ersetze die alte Datei durch die neue
+
+
+        // 4. Ersetze die alte Datei durch die neue.  *Zuerst* löschen, *dann* umbenennen.
         if (!unlink($dataFile)) {
             throw new RuntimeException('Alte Daten-Datei konnte nicht gelöscht werden.');
         }
-        
+
         if (!rename($tempFile, $dataFile)) {
+            // Fehler beim Umbenennen!  Versuche, das Backup wiederherzustellen.
             if (file_exists($backupFile)) {
-                copy($backupFile, $dataFile);
+                if (!rename($backupFile, $dataFile)) { // Versuche, das Backup wiederherzustellen
+                    // KRITISCHER FEHLER:  Sowohl das Umbenennen als auch die Wiederherstellung sind fehlgeschlagen!
+                    throw new RuntimeException('CRITICAL: Compaction failed, and backup restoration failed!  Data may be lost.');
+                }
             }
             throw new RuntimeException('Temporäre Datei konnte nicht umbenannt werden. Wiederherstellung versucht.');
         }
-        
+
+        // Aufräumen: Lösche die Backup-Datei nach erfolgreicher Kompaktierung.
+        @unlink($backupFile); // Verwende @, um Warnungen zu unterdrücken, wenn die Datei nicht existiert.
+
         return $newIndex;
     }
 
@@ -279,5 +302,43 @@ class FlatFileFileManager
         }
         
         return $backupFile;
+    }
+
+    // Generator-based approach (better for large files)
+    public function readRecordsGenerator(): Generator
+    {
+        $handle = fopen($this->config->getDataFile(), 'rb');
+
+        if (!$handle) {
+            return; // Or throw an exception
+        }
+
+        try {
+            if (!flock($handle, LOCK_SH)) {
+                throw new RuntimeException("Konnte keine Lesesperre für die Datei erhalten.");
+            }
+
+            while (!feof($handle)) {
+                $position = ftell($handle);
+                $line = fgets($handle);
+
+                if ($line === false) {
+                    break;
+                }
+
+                try {
+                    $decoded = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
+                    yield $position => $decoded; // Yield the record and its offset
+                } catch (JsonException $e) {
+                    throw new RuntimeException("Error decoding JSON at offset $position: " . $e->getMessage(), 0, $e);
+                }
+            }
+
+            flock($handle, LOCK_UN);
+        } catch (Throwable $e) {
+            throw new RuntimeException("Error during readAllRecords: " . $e->getMessage(), 0, $e);
+        } finally {
+            fclose($handle);
+        }
     }
 }

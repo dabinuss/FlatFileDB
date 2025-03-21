@@ -13,7 +13,6 @@ use Throwable;
 class FlatFileDatabase
 {
     private string $baseDir;
-    /** @var array<string, FlatFileTableEngine> */
     private array $tables = [];
     private bool $autoCommitIndex;
     private string $logFile;
@@ -24,13 +23,29 @@ class FlatFileDatabase
      */
     public function __construct(string $baseDir = FlatFileDBConstants::DEFAULT_BASE_DIR, bool $autoCommitIndex = false)
     {
-        $this->baseDir = rtrim($baseDir, '/');
+        $baseDir = rtrim($baseDir, '/');
+
+        $realBaseDir = realpath($baseDir);
+
+        if ($realBaseDir === false) {
+            throw new InvalidArgumentException("Invalid base directory: '$baseDir'");
+        }
+
+        $this->baseDir = $baseDir;
         $this->autoCommitIndex = $autoCommitIndex;
         $this->logFile = "{$this->baseDir}/database.log";
         
-        if (!is_dir($this->baseDir) && !mkdir($this->baseDir, 0755, true)) {
-            throw new RuntimeException("Datenbank-Verzeichnis '{$this->baseDir}' konnte nicht erstellt werden.");
+        if (!is_dir($this->baseDir)) {
+            if (!mkdir($this->baseDir, 0755, true)) {
+                throw new RuntimeException("Datenbank-Verzeichnis '{$this->baseDir}' konnte nicht erstellt werden.");
+            }
         }
+
+        $realPath = realpath($this->baseDir);
+        if ($realPath === false) {
+            throw new RuntimeException("Could not resolve real path for '{$this->baseDir}'");
+        }
+        $this->baseDir = $realPath;
     }
     
     /**
@@ -44,13 +59,19 @@ class FlatFileDatabase
         if (!FlatFileValidator::isValidId($tableName)) {
             throw new InvalidArgumentException("Tabellenname '$tableName' ist ungültig.");
         }
-        
-        $dataFile  = "{$this->baseDir}/{$tableName}_data.jsonl";
-        $indexFile = "{$this->baseDir}/{$tableName}_index.json";
-        $logFile   = "{$this->baseDir}/{$tableName}_log.jsonl";
-        
+    
+        $dataFile  = "{$this->baseDir}/{$tableName}_data" . FlatFileDBConstants::DATA_FILE_EXTENSION;
+        $indexFile = "{$this->baseDir}/{$tableName}_index" . FlatFileDBConstants::INDEX_FILE_EXTENSION;
+        $logFile   = "{$this->baseDir}/{$tableName}_log" . FlatFileDBConstants::LOG_FILE_EXTENSION;
+    
         $config = new FlatFileConfig($dataFile, $indexFile, $logFile, $this->autoCommitIndex);
-        $this->tables[$tableName] = new FlatFileTableEngine($config);
+    
+        try {
+            $this->tables[$tableName] = new FlatFileTableEngine($config);
+        } catch (Throwable $e) {
+            unset($this->tables[$tableName]); // Remove the entry if creation fails
+            throw new RuntimeException("Fehler beim Registrieren der Tabelle '$tableName': " . $e->getMessage(), 0, $e);
+        }
         return $this->tables[$tableName];
     }
     
@@ -168,8 +189,22 @@ class FlatFileDatabase
 
     public function clearDatabase(): void
     {
+        $errors = [];
         foreach ($this->tables as $tableName => $engine) {
-            $engine->clearTable();
+            try {
+                $engine->clearTable();
+            } catch (Throwable $e) {
+                $errors[$tableName] = $e->getMessage();
+            }
+        }
+    
+        if (!empty($errors)) {
+            // Report all errors
+            $errorMessage = "Errors occurred while clearing the database:\n";
+            foreach ($errors as $tableName => $message) {
+                $errorMessage .= "Table '$tableName': $message\n";
+            }
+            throw new RuntimeException($errorMessage);
         }
     }
 }

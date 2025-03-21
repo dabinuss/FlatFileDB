@@ -14,7 +14,10 @@ use Throwable;
 class FlatFileDBConstants {
     public const DEFAULT_BASE_DIR    = 'data';
     public const DEFAULT_BACKUP_DIR  = 'data/backups';
-    // Hier können ggf. weitere Konstanten definiert werden, z.B. für spezielle Datenverzeichnisse.
+
+    public const DATA_FILE_EXTENSION = '.jsonl';
+    public const INDEX_FILE_EXTENSION = '.json';
+    public const LOG_FILE_EXTENSION = '.jsonl';
 
     public const LOG_ACTION_INSERT = 'INSERT';
     public const LOG_ACTION_UPDATE = 'UPDATE';
