@@ -14,12 +14,10 @@ class FlatFileDatabase
 {
     private string $baseDir;
     private array $tables = [];
-    private bool $autoCommitIndex;
     private string $logFile;
     
     /**
      * @param string $baseDir Basisverzeichnis für die Datenbankdateien (Standard: FlatFileDBConstants::DEFAULT_BASE_DIR)
-     * @param bool $autoCommitIndex Ob der Index automatisch gespeichert werden soll
      */
     public function __construct(string $baseDir = FlatFileDBConstants::DEFAULT_BASE_DIR)
     {
@@ -32,7 +30,6 @@ class FlatFileDatabase
         }
 
         $this->baseDir = $baseDir;
-        //$this->autoCommitIndex = $autoCommitIndex; // Entfernt
         $this->logFile = "{$this->baseDir}/database.log";
 
         if (!is_dir($this->baseDir)) {
@@ -66,8 +63,7 @@ class FlatFileDatabase
         $indexFile = "{$this->baseDir}/{$tableName}_index" . FlatFileDBConstants::INDEX_FILE_EXTENSION;
         $logFile   = "{$this->baseDir}/{$tableName}_log" . FlatFileDBConstants::LOG_FILE_EXTENSION;
 
-        // autoCommitIndex wird immer auf true gesetzt.
-        $config = new FlatFileConfig($dataFile, $indexFile, $logFile, true);
+        $config = new FlatFileConfig($dataFile, $indexFile, $logFile);
 
         try {
             $this->tables[$tableName] = new FlatFileTableEngine($config);

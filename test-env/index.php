@@ -30,8 +30,7 @@ use FlatFileDB\FlatFileDBConstants;
 // Datenbank-Initialisierung
 // ===========================================================
 $db = new FlatFileDatabase(
-    FlatFileDBConstants::DEFAULT_BASE_DIR, // Basis-Ordner für Daten
-    false                                  // autoCommitIndex = false (Index wird manuell gespeichert)
+    FlatFileDBConstants::DEFAULT_BASE_DIR, // Basis-Ordner für Daten 
 );
 
 // Tabellen registrieren

@@ -43,32 +43,39 @@ class FlatFileFileManager
      */
     public function appendRecord(array $record): int
     {
-
         $dataFile = $this->config->getDataFile();
-
-        // Check if the file exists.  If not, create it.
+    
+        // Check if the file exists. If not, create it.
         if (!file_exists($dataFile)) {
             if (!touch($dataFile)) {
                 throw new RuntimeException("Data file '$dataFile' does not exist and could not be created.");
             }
         }
-
-        $handle = fopen($dataFile, 'ab');
-        
+    
+        // Open file in read/write append mode ('a+b') for stable pointer positioning
+        $handle = fopen($dataFile, 'a+b');
+        if (!$handle) {
+            throw new RuntimeException("Fehler beim Öffnen der Datei '$dataFile'.");
+        }
+    
         $offset = null;
-        
+    
         try {
             if (!flock($handle, LOCK_EX)) {
                 throw new RuntimeException('Konnte keine exklusive Sperre für die Datei erhalten.');
             }
             
+            // Sicherstellen, dass der Zeiger am Ende der Datei ist
+            fseek($handle, 0, SEEK_END);
             $offset = ftell($handle);
-            $json = json_encode($record, JSON_THROW_ON_ERROR);
             
+            $json = json_encode($record, JSON_THROW_ON_ERROR);
             if (fwrite($handle, $json . "\n") === false) {
                 throw new RuntimeException('Fehler beim Schreiben des Datensatzes.');
             }
-            
+    
+            fflush($handle); // Optional: Daten sofort in die Datei schreiben
+    
             flock($handle, LOCK_UN);
         } catch (Throwable $e) {
             throw new RuntimeException("Fehler beim Anhängen eines Datensatzes: " . $e->getMessage(), 0, $e);

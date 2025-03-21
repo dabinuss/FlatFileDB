@@ -58,7 +58,7 @@ Before you start, you should have the following files in your project:
 2\. Including and Initializing the Database
 -------------------------------------------
 
-First, include the database classes and create a database instance. You can optionally specify whether the index should be automatically committed to file after every write operation (the `autoCommitIndex` parameter).
+First, include the database classes and create a database instance.
 
 Example:
 
@@ -81,8 +81,7 @@ require_once 'FlatFileDB.php'; // Contains all classes (Namespace: FlatFileDB)
 use FlatFileDB\FlatFileDatabase;
 use FlatFileDB\FlatFileDBConstants;
 
-// Create a database instance and, for example, choose autoCommitIndex = false
-// (you can trigger it manually later using commitAllIndexes())
+// Create a database instance
 $db = new FlatFileDatabase(FlatFileDBConstants::DEFAULT_BASE_DIR, false);
 
 // Register tables -- for example, here we register the "users" and "products" tables
@@ -212,11 +211,6 @@ foreach ($allUsers as $user) {
 ------------------------
 
 ### a) Index Management
-
-**commitAllIndexes()**:
-
--   This method saves all in-memory indexes to their corresponding index files.
--   Usage: Call it after each write operation (insert, update, delete) if you have set `autoCommitIndex` to false.
 
 **compactTable()**:
 
