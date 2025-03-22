@@ -58,30 +58,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Neuen Benutzer einfügen
             // -----------------------------------------------------------
             case 'insert_user':
-                $id    = trim($_POST['user_id'] ?? '');
+                // $id wird NICHT mehr benötigt!
                 $name  = trim($_POST['name'] ?? '');
                 $email = trim($_POST['email'] ?? '');
                 $age   = (int)($_POST['age'] ?? 0);
 
-                $success = $db->table('users')->insertRecord($id, [
+                // Korrekt: Nur das Daten-Array übergeben
+                $newId = $db->table('users')->insertRecord([
                     'name'  => $name,
                     'email' => $email,
                     'age'   => $age
                 ]);
 
-                $message = $success
-                    ? "Benutzer mit der ID <strong>{$id}</strong> wurde erfolgreich eingefügt."
-                    : "Fehler: Ein Benutzer mit der ID <strong>{$id}</strong> existiert bereits.";
+                $message = $newId !== false // $newId ist jetzt der Rückgabewert (int oder false)
+                    ? "Benutzer wurde erfolgreich eingefügt. Neue ID: <strong>{$newId}</strong>"
+                    : "Fehler beim Einfügen des Benutzers.";
 
-                // Index (manuell) speichern
-                $db->commitAllIndexes();
                 break;
 
             // -----------------------------------------------------------
             // Benutzer aktualisieren
             // -----------------------------------------------------------
             case 'update_user':
-                $id    = trim($_POST['update_user_id'] ?? '');
+                $id    = (int)trim($_POST['update_user_id'] ?? ''); // RICHTIG: int
                 $name  = trim($_POST['update_name'] ?? '');
                 $email = trim($_POST['update_email'] ?? '');
                 $age   = (int)($_POST['update_age'] ?? 0);
@@ -104,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Benutzer löschen
             // -----------------------------------------------------------
             case 'delete_user':
-                $id = trim($_POST['delete_user_id'] ?? '');
+                $id = (int)trim($_POST['delete_user_id'] ?? '');
                 $success = $db->table('users')->deleteRecord($id);
 
                 $message = $success
@@ -170,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $db->commitAllIndexes();
 
 // Lese alle aktiven Benutzer-Datensätze
-$users = $db->table('users')->selectAllRecords();
+$users = $db->table('users')->selectAllRecords(); 
 
 /*
  * FRONTEND LADEN
