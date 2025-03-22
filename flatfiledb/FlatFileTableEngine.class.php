@@ -258,34 +258,43 @@ class FlatFileTableEngine
      * @param int $offset Überspringt die ersten n passenden Datensätze
      * @return array Liste der passenden Datensätze
      */
-    public function findRecords(callable $filterFn, int $limit = 0, int $offset = 0): array
+    public function findRecords(callable $filterFn, int $limit = 0, int $offset = 0, ?int $id = null): array
     {
         $results = [];
+    
+        // Direkte ID-Suche (wenn $id gesetzt ist)
+        if ($id !== null) {
+            $record = $this->selectRecord($id); // selectRecord verwendet den Index
+            if ($record !== null) {
+                $results[] = $record;
+            }
+            return $results; // Fertig
+        }
+    
         $count = 0;
         $skipped = 0;
-
+    
         foreach ($this->fileManager->readRecordsGenerator() as $record) {
-            // Stelle sicher, dass $record['id'] für den Vergleich in einen Integer umgewandelt wird,
-            // falls $filterFn Vergleiche mit der ID durchführt.
-            if ($record !== null && isset($record['id'])) {
-                $record['id'] = is_string($record['id']) ? (int)$record['id'] : $record['id'];
+    
+            // Offset überspringen
+            if ($offset > 0 && $skipped < $offset) {
+                $skipped++;
+                continue; // Nächster Datensatz
             }
-
-            if ($record !== null && $filterFn($record)) {
-                if ($offset > 0 && $skipped < $offset) {
-                    $skipped++;
-                    continue;
-                }
-
+    
+            // Filterfunktion aufrufen und *danach* Limit prüfen!
+            if ($record !== null && $filterFn($record))
+            {
                 $results[] = $record;
                 $count++;
-
+    
+                // Limit prüfen
                 if ($limit > 0 && $count >= $limit) {
-                    break;
+                    break; // Schleife verlassen
                 }
             }
         }
-
+    
         return $results;
     }
     

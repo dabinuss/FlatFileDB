@@ -30,7 +30,7 @@ use FlatFileDB\FlatFileDBConstants;
 // Datenbank-Initialisierung
 // ===========================================================
 $db = new FlatFileDatabase(
-    FlatFileDBConstants::DEFAULT_BASE_DIR, // Basis-Ordner für Daten 
+    FlatFileDBConstants::DEFAULT_BASE_DIR, // Basis-Ordner für Daten
 );
 
 // Tabellen registrieren
@@ -95,8 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? "Benutzer mit der ID <strong>{$id}</strong> wurde erfolgreich aktualisiert."
                     : "Fehler: Benutzer mit der ID <strong>{$id}</strong> konnte nicht gefunden werden.";
 
-                // Index speichern
-                $db->commitAllIndexes();
                 break;
 
             // -----------------------------------------------------------
@@ -109,9 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = $success
                     ? "Benutzer mit der ID <strong>{$id}</strong> wurde erfolgreich gelöscht."
                     : "Fehler: Benutzer mit der ID <strong>{$id}</strong> konnte nicht gefunden werden.";
-
-                // Index speichern
-                $db->commitAllIndexes();
                 break;
 
             // -----------------------------------------------------------
@@ -119,15 +114,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // -----------------------------------------------------------
             case 'search_user':
                 $searchTerm = trim($_POST['search_term'] ?? '');
+                $searchId = trim($_POST['search_id'] ?? '');
 
-                // Beispiel: Suche nach Benutzern, deren Name den Suchbegriff enthält (Groß-/Kleinschreibung ignoriert)
-                $searchResults = $db->table('users')->findRecords(
-                    function($record) use ($searchTerm) {
-                        return stripos($record['name'], $searchTerm) !== false;
-                    }
-                );
 
-                $message = "Suche nach Benutzern mit dem Begriff <strong>{$searchTerm}</strong> durchgeführt.";
+                if(!empty($searchId)) {
+                    // Beispiel: Suche nach Benutzern anhand der ID
+                    $searchResults = $db->table('users')->findRecords(fn($r) => false, id: (int)$searchId);
+                    $message = "Suche nach Benutzer mit ID <strong>{$searchId}</strong> durchgeführt.";
+
+                } else {
+                    // Beispiel: Suche nach Benutzern, deren Name den Suchbegriff enthält (Groß-/Kleinschreibung ignoriert)
+                    $searchResults = $db->table('users')->findRecords(
+                        function ($record) use ($searchTerm) {
+                            return stripos($record['name'], $searchTerm) !== false;
+                        }
+                    );
+                    $message = "Suche nach Benutzern mit dem Begriff <strong>{$searchTerm}</strong> durchgeführt.";
+                }
+
                 break;
 
             // -----------------------------------------------------------
@@ -165,11 +169,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Änderungen sichern (zur Sicherheit immer kurz vor dem Ende)
-$db->commitAllIndexes();
-
 // Lese alle aktiven Benutzer-Datensätze
-$users = $db->table('users')->selectAllRecords(); 
+$users = $db->table('users')->selectAllRecords();
 
 /*
  * FRONTEND LADEN
