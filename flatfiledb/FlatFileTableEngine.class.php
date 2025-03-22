@@ -120,63 +120,58 @@ class FlatFileTableEngine
         $recordId = (string)$recordId;
         $oldOffset = $this->indexBuilder->getIndexOffset($recordId);
         if ($oldOffset === null) {
+            // Falls der Datensatz gar nicht existiert, können wir ihn nicht updaten.
             return false;
         }
-
-        // Schema-Validierung wenn definiert
-        if (!empty($this->schema)) {
-            FlatFileValidator::validateData(
-                $newData,
-                $this->schema['requiredFields'] ?? [],
-                $this->schema['fieldTypes'] ?? []
-            );
+    
+        // Lese den aktuellen Datensatz
+        $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
+        if (!$oldData || !is_array($oldData) || !isset($oldData['id'])) {
+            return false;
         }
-
-        $oldData = null; // Initialisieren für den Scope
+    
+        // Felder, die automatisch verwaltet werden, werden beim Vergleich ignoriert.
+        $fieldsToIgnore = ['updated_at', 'created_at', '_deleted', 'deleted_at'];
+        $filteredOldData = array_diff_key($oldData, array_flip($fieldsToIgnore));
+        $filteredNewData = array_diff_key($newData, array_flip($fieldsToIgnore));
+    
+        // Wenn es keine Änderungen gibt, gilt das Update als erfolgreich.
+        if ($filteredOldData == $filteredNewData) {
+            return true;
+        }
+    
         try {
-            $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
-            if (!$oldData || !is_array($oldData) || !isset($oldData['id'])) {
-                return false;
-            }
-
-            // 1. Append *old* data marked as deleted *FIRST*.
+            // 1. Markiere den alten Datensatz als gelöscht.
             $oldData['_deleted'] = true;
-            $oldData['deleted_at'] = time(); // Add deleted_at
+            $oldData['deleted_at'] = time();
             $this->fileManager->appendRecord($oldData);
-
-            // 2. Append the *new* record.
+    
+            // 2. Erstelle den neuen Datensatz.
             $newData['id'] = $recordId;
             $newData['created_at'] = $oldData['created_at'] ?? time();
             $newData['updated_at'] = time();
             $newOffset = $this->fileManager->appendRecord($newData);
-            if ($newOffset === false) { // Check for append failure
+            if ($newOffset === false) {
                 throw new RuntimeException("Failed to append new data for record $recordId");
             }
-
-            // 3. Update the index *AFTER* appending the new record.  *IMMER* speichern.
+    
+            // 3. Aktualisiere den Index.
             $this->indexBuilder->setIndex($recordId, $newOffset);
-
-            // 4. Log *after* successful index update.
+    
+            // 4. Schreibe den Log-Eintrag.
             $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_UPDATE, $recordId, $newData);
-
-            // Cache aktualisieren
+    
+            // Cache aktualisieren.
             $this->addToCache($recordId, $newData);
-
+    
             return true;
-
         } catch (Throwable $e) {
-            // Rollback:  If anything failed, try to restore the old state.
-            if ($newOffset ?? false) { // Check if newOffset was ever set.
-                error_log("Update failed for record $recordId AFTER appending new data.  Index remains at new offset.");
-            } elseif($oldOffset !== null && is_array($oldData)) {
-                // Wenn das Anhängen des neuen Datensatzes fehlschlug, versuchen,
-                // den alten Indexeintrag wiederherzustellen.
+            // Bei einem Fehler: versuche den alten Zustand wiederherzustellen.
+            if ($oldOffset !== null && is_array($oldData)) {
                 $this->indexBuilder->setIndex($recordId, $oldOffset);
-                // Zusätzlich: den alten Datensatz wieder als nicht gelöscht markieren
                 $oldData['_deleted'] = false;
                 unset($oldData['deleted_at']);
                 $this->fileManager->appendRecord($oldData);
-
             }
             throw new RuntimeException("Fehler beim Aktualisieren des Datensatzes $recordId: " . $e->getMessage(), 0, $e);
         }
