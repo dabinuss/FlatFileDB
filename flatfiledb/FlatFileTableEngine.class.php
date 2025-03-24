@@ -17,13 +17,8 @@ class FlatFileTableEngine
     private FlatFileIndexBuilder $indexBuilder;
     private FlatFileTransactionLog $transactionLog;
     
-    /** @var array<string, array> Einfacher Datensatz-Cache */
     private array $dataCache = [];
-    
-    /** @var int Maximale Anzahl an Datensätzen im Cache */
     private int $maxCacheSize = 100;
-    
-    /** @var array<string, array> Schema-Definition für diese Tabelle */
     private array $schema = [];
     
     /**
@@ -32,7 +27,7 @@ class FlatFileTableEngine
     public function __construct(FlatFileConfig $config)
     {
         $this->config = $config;
-        $this->fileManager = new FlatFileFileManager($config);
+        $this->fileManager = new FlatFileFileManager($config, 9);
         $this->indexBuilder = new FlatFileIndexBuilder($config);
         $this->transactionLog = new FlatFileTransactionLog($config);
     }
