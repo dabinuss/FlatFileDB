@@ -42,6 +42,10 @@ $db->table('users')->setSchema(
     ['name' => 'string', 'email' => 'string', 'age' => 'int']  // erwartete Typen
 );
 
+// Create index on 'name' and 'email
+$db->table('users')->createIndex('name');
+$db->table('users')->createIndex('email');
+
 // ===========================================================
 // Formular-Verarbeitung
 // ===========================================================
@@ -118,17 +122,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 
                 if(!empty($searchId)) {
-                    // Beispiel: Suche nach Benutzern anhand der ID
-                    $searchResults = $db->table('users')->findRecords(fn($r) => false, id: (int)$searchId);
+                    // Search by ID
+                    $searchResults = $db->table('users')->findRecords([], id: (int)$searchId);
                     $message = "Suche nach Benutzer mit ID <strong>{$searchId}</strong> durchgeführt.";
 
                 } else {
-                    // Beispiel: Suche nach Benutzern, deren Name den Suchbegriff enthält (Groß-/Kleinschreibung ignoriert)
-                    $searchResults = $db->table('users')->findRecords(
-                        function ($record) use ($searchTerm) {
-                            return stripos($record['name'], $searchTerm) !== false;
-                        }
-                    );
+                    // Search by name (using the index if available)
+                    $searchResults = $db->table('users')->findRecords([
+                        ['field' => 'name', 'operator' => 'LIKE', 'value' => $searchTerm]
+                    ]);
                     $message = "Suche nach Benutzern mit dem Begriff <strong>{$searchTerm}</strong> durchgeführt.";
                 }
 
