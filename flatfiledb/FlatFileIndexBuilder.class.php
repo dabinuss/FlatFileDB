@@ -27,6 +27,11 @@ class FlatFileIndexBuilder
         $this->loadSecondaryIndexes(); // Load secondary indexes
     }
 
+    public function getCurrentIndex(): array
+    {
+        return $this->indexData;
+    }
+
     private function getTableNameFromConfig(): string
     {
         $dataFile = $this->config->getDataFile();

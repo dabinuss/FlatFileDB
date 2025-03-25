@@ -99,24 +99,32 @@ class FlatFileTableEngine
      */
     public function insertRecord(array $data): int
     {
-        $recordId = $this->indexBuilder->getNextId(); // ID vom IndexBuilder holen
-        $data['id'] = $recordId; // Integer-ID verwenden
-        $data['created_at'] = time();
-        $data['_deleted'] = false;
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($data) {
+            $recordId = $this->indexBuilder->getNextId(); // ID vom IndexBuilder holen
+            $data['id'] = $recordId; // Integer-ID verwenden
+            $data['created_at'] = time();
+            $data['_deleted'] = false;
 
-        if (!empty($this->schema)) { // Schema-Validierung (unverändert)
-            FlatFileValidator::validateData($data, $this->schema['requiredFields'] ?? [], $this->schema['fieldTypes'] ?? []);
-        }
+            if (!empty($this->schema)) { // Schema-Validierung (unverändert)
+                FlatFileValidator::validateData($data, $this->schema['requiredFields'] ?? [], $this->schema['fieldTypes'] ?? []);
+            }
 
-        $offset = $this->fileManager->appendRecord($data);
-        $this->indexBuilder->setIndex($recordId, $offset); // Integer-ID
-        $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_INSERT, (string)$recordId, $data); // Log als String
-        $this->addToCache((string)$recordId, $data); // Cache-Key als String
+            $offset = $this->fileManager->appendRecord($data);
+            $this->indexBuilder->setIndex($recordId, $offset); // Integer-ID
+            $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_INSERT, (string)$recordId, $data); // Log als String
+            $this->addToCache((string)$recordId, $data); // Cache-Key als String
 
-        // Update secondary indexes
-        $this->updateSecondaryIndexesOnInsert($recordId, $data);
+            // Update secondary indexes
+            $this->updateSecondaryIndexesOnInsert($recordId, $data);
 
-        return $recordId; // Neue ID zurückgeben
+            return $recordId; // Neue ID zurückgeben
+
+        });
+
+        // NEU: Performance-Dauer für INSERT speichern
+        FlatFileDBStatistics::recordPerformance('INSERT', $measurement['duration']);
+
+        return $measurement['result'];
     }
 
 
@@ -140,58 +148,65 @@ class FlatFileTableEngine
      */
     public function updateRecord(int $recordId, array $newData): bool
     {
-        $oldOffset = $this->indexBuilder->getIndexOffset($recordId); // Integer-ID
-        if ($oldOffset === null) { return false; }
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($recordId, $newData) {
 
-        // Lese den aktuellen Datensatz
-        $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
-        if (!$oldData || !is_array($oldData) || !isset($oldData['id'])) {
-            return false;
-        }
+            $oldOffset = $this->indexBuilder->getIndexOffset($recordId); // Integer-ID
+            if ($oldOffset === null) { return false; }
 
-        // Felder, die automatisch verwaltet werden, werden beim Vergleich ignoriert.
-        $fieldsToIgnore = ['updated_at', 'created_at', '_deleted', 'deleted_at'];
-        $filteredOldData = array_diff_key($oldData, array_flip($fieldsToIgnore));
-        $filteredNewData = array_diff_key($newData, array_flip($fieldsToIgnore));
-
-        // Wenn es keine Änderungen gibt, gilt das Update als erfolgreich.
-        if ($filteredOldData == $filteredNewData) {
-            return true;
-        }
-
-        try {
-            // 1. Markiere den alten Datensatz als gelöscht.
-            $oldData['_deleted'] = true;
-            $oldData['deleted_at'] = time();
-            $this->fileManager->appendRecord($oldData);
-
-            // 2. Erstelle den neuen Datensatz.
-            $newData['id'] = $recordId;
-            $newData['created_at'] = $oldData['created_at'] ?? time();
-            $newData['updated_at'] = time();
-            $newOffset = $this->fileManager->appendRecord($newData);
-            if ($newOffset === false) {
-                throw new RuntimeException("Failed to append new data for record $recordId");
+            // Lese den aktuellen Datensatz
+            $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
+            if (!$oldData || !is_array($oldData) || !isset($oldData['id'])) {
+                return false;
             }
 
-            $this->indexBuilder->setIndex($recordId, $newOffset);  // Integer ID
-            $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_UPDATE, (string)$recordId, $newData); // Log als String
-            $this->addToCache((string)$recordId, $newData); // Cache-Key als String
+            // Felder, die automatisch verwaltet werden, werden beim Vergleich ignoriert.
+            $fieldsToIgnore = ['updated_at', 'created_at', '_deleted', 'deleted_at'];
+            $filteredOldData = array_diff_key($oldData, array_flip($fieldsToIgnore));
+            $filteredNewData = array_diff_key($newData, array_flip($fieldsToIgnore));
 
-            // Update secondary indexes
-            $this->updateSecondaryIndexesOnUpdate($recordId, $oldData, $newData);
+            // Wenn es keine Änderungen gibt, gilt das Update als erfolgreich.
+            if ($filteredOldData == $filteredNewData) {
+                return true;
+            }
 
-            return true;
-        } catch (Throwable $e) {
-            // Bei einem Fehler: versuche den alten Zustand wiederherzustellen.
-            if ($oldOffset !== null && is_array($oldData)) {
-                $this->indexBuilder->setIndex($recordId, $oldOffset);
-                $oldData['_deleted'] = false;
-                unset($oldData['deleted_at']);
+            try {
+                // 1. Markiere den alten Datensatz als gelöscht.
+                $oldData['_deleted'] = true;
+                $oldData['deleted_at'] = time();
                 $this->fileManager->appendRecord($oldData);
+
+                // 2. Erstelle den neuen Datensatz.
+                $newData['id'] = $recordId;
+                $newData['created_at'] = $oldData['created_at'] ?? time();
+                $newData['updated_at'] = time();
+                $newOffset = $this->fileManager->appendRecord($newData);
+                if ($newOffset === false) {
+                    throw new RuntimeException("Failed to append new data for record $recordId");
+                }
+
+                $this->indexBuilder->setIndex($recordId, $newOffset);  // Integer ID
+                $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_UPDATE, (string)$recordId, $newData); // Log als String
+                $this->addToCache((string)$recordId, $newData); // Cache-Key als String
+
+                // Update secondary indexes
+                $this->updateSecondaryIndexesOnUpdate($recordId, $oldData, $newData);
+
+                return true;
+            } catch (Throwable $e) {
+                // Bei einem Fehler: versuche den alten Zustand wiederherzustellen.
+                if ($oldOffset !== null && is_array($oldData)) {
+                    $this->indexBuilder->setIndex($recordId, $oldOffset);
+                    $oldData['_deleted'] = false;
+                    unset($oldData['deleted_at']);
+                    $this->fileManager->appendRecord($oldData);
+                }
+                throw new RuntimeException("Fehler beim Aktualisieren des Datensatzes $recordId: " . $e->getMessage(), 0, $e);
             }
-            throw new RuntimeException("Fehler beim Aktualisieren des Datensatzes $recordId: " . $e->getMessage(), 0, $e);
-        }
+        });
+
+        FlatFileDBStatistics::recordPerformance('UPDATE', $measurement['duration']);
+    
+        return $measurement['result'];
     }
 
 
@@ -223,46 +238,53 @@ class FlatFileTableEngine
      */
     public function deleteRecord(int $recordId): bool
     {
-        $oldOffset = $this->indexBuilder->getIndexOffset($recordId); // Integer-ID
-        if ($oldOffset === null) {  return false; }
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($recordId) {
 
-        $oldData = null;
-        try {
-            $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
-            if (!$oldData || ($oldData['_deleted'] === true)) {
-                return false;
+            $oldOffset = $this->indexBuilder->getIndexOffset($recordId); // Integer-ID
+            if ($oldOffset === null) {  return false; }
+
+            $oldData = null;
+            try {
+                $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
+                if (!$oldData || ($oldData['_deleted'] === true)) {
+                    return false;
+                }
+
+                // 1. Append the deletion marker *FIRST*.
+                $oldData['_deleted'] = true;
+                $oldData['deleted_at'] = time();
+                $deleteOffset = $this->fileManager->appendRecord($oldData);
+                if ($deleteOffset === false) { // Check for append failure
+                    throw new RuntimeException("Failed to append deletion marker for record $recordId");
+                }
+
+                $this->indexBuilder->removeIndex($recordId); // Integer-ID
+                $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_DELETE, (string)$recordId); // Log als String
+                unset($this->dataCache[(string)$recordId]); // Cache-Key als String
+
+                // Update secondary indexes (remove all entries for this record)
+                $this->updateSecondaryIndexesOnDelete($recordId, $oldData);
+
+                return true;
+
+            } catch (Throwable $e) {
+                if ($deleteOffset ?? false) { // Wurde der Löschmarker geschrieben?
+                    //Wenn ja, Index *nicht* wiederherstellen
+                    error_log("Deletion failed for record $recordId AFTER appending deletion marker. Index remains removed.");
+                } elseif ($oldOffset !== null && is_array($oldData)) {
+                    //Wenn nein, Index wiederherstellen und den alten Datensatz als nicht gelöscht markieren.
+                    $this->indexBuilder->setIndex($recordId, $oldOffset);
+                    $oldData['_deleted'] = false;
+                    unset($oldData['deleted_at']);
+                    $this->fileManager->appendRecord($oldData);
+                }
+                throw new RuntimeException("Fehler beim Löschen des Datensatzes $recordId: " . $e->getMessage(), 0, $e);
             }
+        });
 
-            // 1. Append the deletion marker *FIRST*.
-            $oldData['_deleted'] = true;
-            $oldData['deleted_at'] = time();
-            $deleteOffset = $this->fileManager->appendRecord($oldData);
-            if ($deleteOffset === false) { // Check for append failure
-                throw new RuntimeException("Failed to append deletion marker for record $recordId");
-            }
-
-            $this->indexBuilder->removeIndex($recordId); // Integer-ID
-            $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_DELETE, (string)$recordId); // Log als String
-            unset($this->dataCache[(string)$recordId]); // Cache-Key als String
-
-             // Update secondary indexes (remove all entries for this record)
-            $this->updateSecondaryIndexesOnDelete($recordId, $oldData);
-
-            return true;
-
-        } catch (Throwable $e) {
-            if ($deleteOffset ?? false) { // Wurde der Löschmarker geschrieben?
-                //Wenn ja, Index *nicht* wiederherstellen
-                error_log("Deletion failed for record $recordId AFTER appending deletion marker. Index remains removed.");
-            } elseif ($oldOffset !== null && is_array($oldData)) {
-                //Wenn nein, Index wiederherstellen und den alten Datensatz als nicht gelöscht markieren.
-                $this->indexBuilder->setIndex($recordId, $oldOffset);
-                $oldData['_deleted'] = false;
-                unset($oldData['deleted_at']);
-                $this->fileManager->appendRecord($oldData);
-            }
-            throw new RuntimeException("Fehler beim Löschen des Datensatzes $recordId: " . $e->getMessage(), 0, $e);
-        }
+        FlatFileDBStatistics::recordPerformance('DELETE', $measurement['duration']);
+    
+        return $measurement['result'];
     }
 
 
@@ -340,88 +362,295 @@ class FlatFileTableEngine
      */
     public function findRecords(array $whereConditions, int $limit = 0, int $offset = 0, ?int $id = null): array
     {
-        $results = [];
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($whereConditions, $limit, $offset, $id) {
+    
+            $results = [];
 
-        // Direct ID lookup (fastest)
-        if ($id !== null) {
-            $record = $this->selectRecord($id);
-            if ($record !== null && $this->recordMatchesConditions($record, $whereConditions)) {
-                $results[] = $record;
-            }
-            return $results;
-        }
-
-        // 1. Find candidate record IDs using indexes, if possible.
-        //    We'll optimize for equality checks on indexed fields.
-        $candidateIds = null;
-
-        // Find the first equality condition on an indexed field, if any.
-        $indexedEqualityCondition = null;
-        foreach ($whereConditions as $condition) {
-            if ($condition['operator'] === '=' && in_array($condition['field'], $this->indexedFields)) {
-                $indexedEqualityCondition = $condition;
-                break; // Use the first one we find
-            }
-        }
-
-        // If we have an indexed equality condition, use it to get initial candidates.
-        if ($indexedEqualityCondition) {
-            $field = $indexedEqualityCondition['field'];
-            $value = (string)$indexedEqualityCondition['value'];
-            $candidateIds = $this->indexBuilder->getRecordIdsByFieldValue($field, $value);
-
-            // If the index returns no results, we can return early.
-            if (empty($candidateIds)) {
-                return [];
-            }
-        }
-
-
-        // 2. Filter based on candidate IDs (if we have any) or a full scan.
-        $count = 0;
-        $skipped = 0;
-
-        if ($candidateIds !== null) {
-            // Use candidate IDs (from index)
-            foreach ($candidateIds as $recordId) {
-                if ($offset > 0 && $skipped < $offset) {
-                    $skipped++;
-                    continue;
-                }
-
-                $record = $this->selectRecord($recordId); // Efficient lookup by ID
-
-                // MUST check ALL conditions, even if using an index.
+            // Direct ID lookup (fastest)
+            if ($id !== null) {
+                $record = $this->selectRecord($id);
                 if ($record !== null && $this->recordMatchesConditions($record, $whereConditions)) {
                     $results[] = $record;
-                    $count++;
-                    if ($limit > 0 && $count >= $limit) {
-                        break;
+                }
+                return $results;
+            }
+
+            // 1. Find candidate record IDs using indexes, if possible.
+            //    We'll optimize for equality checks on indexed fields.
+            $candidateIds = null;
+
+            // Find the first equality condition on an indexed field, if any.
+            $indexedEqualityCondition = null;
+            foreach ($whereConditions as $condition) {
+                if ($condition['operator'] === '=' && in_array($condition['field'], $this->indexedFields)) {
+                    $indexedEqualityCondition = $condition;
+                    break; // Use the first one we find
+                }
+            }
+
+            // If we have an indexed equality condition, use it to get initial candidates.
+            if ($indexedEqualityCondition) {
+                $field = $indexedEqualityCondition['field'];
+                $value = (string)$indexedEqualityCondition['value'];
+                $candidateIds = $this->indexBuilder->getRecordIdsByFieldValue($field, $value);
+
+                // If the index returns no results, we can return early.
+                if (empty($candidateIds)) {
+                    return [];
+                }
+            }
+
+
+            // 2. Filter based on candidate IDs (if we have any) or a full scan.
+            $count = 0;
+            $skipped = 0;
+
+            if ($candidateIds !== null) {
+                // Use candidate IDs (from index)
+                foreach ($candidateIds as $recordId) {
+                    if ($offset > 0 && $skipped < $offset) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $record = $this->selectRecord($recordId); // Efficient lookup by ID
+
+                    // MUST check ALL conditions, even if using an index.
+                    if ($record !== null && $this->recordMatchesConditions($record, $whereConditions)) {
+                        $results[] = $record;
+                        $count++;
+                        if ($limit > 0 && $count >= $limit) {
+                            break;
+                        }
+                    }
+                }
+            } else {
+                // Full table scan (no index used, or no equality on indexed field)
+                foreach ($this->fileManager->readRecordsGenerator() as $record) {
+                    if ($offset > 0 && $skipped < $offset) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    if ($this->recordMatchesConditions($record, $whereConditions)) {
+                        $results[] = $record;
+                        $count++;
+                        if ($limit > 0 && $count >= $limit) {
+                            break;
+                        }
                     }
                 }
             }
-        } else {
-            // Full table scan (no index used, or no equality on indexed field)
-            foreach ($this->fileManager->readRecordsGenerator() as $record) {
-                if ($offset > 0 && $skipped < $offset) {
-                    $skipped++;
-                    continue;
-                }
 
-                if ($this->recordMatchesConditions($record, $whereConditions)) {
-                    $results[] = $record;
-                    $count++;
-                    if ($limit > 0 && $count >= $limit) {
-                        break;
-                    }
-                }
-            }
-        }
+            return $results;
+        });
 
-        return $results;
+        FlatFileDBStatistics::recordPerformance('FIND', $measurement['duration']);
+    
+        return $measurement['result'];
     }
 
+    /**
+     * Fügt mehrere Datensätze ein, ohne bei jedem Datensatz den Index zu committen.
+     * Stattdessen werden die Index-Änderungen in einem temporären Puffer gesammelt und
+     * nach Abschluss des Bulk-Vorgangs in einem Schritt in den Index übernommen.
+     *
+     * @param array $records Liste der Datensätze (jeder Datensatz als assoziatives Array)
+     * @return array Liste der zurückgegebenen Record-IDs oder Fehlerinformationen pro Datensatz.
+    */
+    public function bulkInsertRecords(array $records): array
+    {
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($records) {
+            $results = [];
+            $tempIndex = []; // Puffer für neue Index-Einträge
 
+            foreach ($records as $record) {
+                try {
+                    // Neuer Datensatz: ID und Metadaten setzen
+                    $recordId = $this->indexBuilder->getNextId();
+                    $record['id'] = $recordId;
+                    $record['created_at'] = time();
+                    $record['_deleted'] = false;
+                    
+                    // Schema-Validierung falls definiert
+                    if (!empty($this->schema)) {
+                        FlatFileValidator::validateData(
+                            $record,
+                            $this->schema['requiredFields'] ?? [],
+                            $this->schema['fieldTypes'] ?? []
+                        );
+                    }
+                    
+                    // Datensatz in Datei anhängen (verwenden persistenter Handles, etc.)
+                    $offset = $this->fileManager->appendRecord($record);
+                    
+                    // Neuer Index-Eintrag wird in den temporären Puffer geschrieben
+                    $tempIndex[$recordId] = $offset;
+                    
+                    // Transaktionslog schreiben und Cache aktualisieren
+                    $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_INSERT, (string)$recordId, $record);
+                    $this->addToCache((string)$recordId, $record);
+                    
+                    // Sekundäre Indizes aktualisieren
+                    $this->updateSecondaryIndexesOnInsert($recordId, $record);
+                    
+                    $results[] = $recordId;
+                } catch (Throwable $e) {
+                    $results[] = ['error' => $e->getMessage()];
+                }
+            }
+
+            // Bulk-Commit: Den aktuellen Index abrufen und mit den neuen Einträgen zusammenführen.
+            $currentIndex = $this->indexBuilder->getCurrentIndex(); // Neuer Methodenteil in der Index-Engine
+            $mergedIndex = array_merge($currentIndex, $tempIndex);
+            $this->indexBuilder->updateIndex($mergedIndex);
+
+            return $results;
+        });
+
+        FlatFileDBStatistics::recordPerformance('BULK_INSERT', $measurement['duration']);
+        return $measurement['result'];
+    }
+
+    /**
+     * Aktualisiert mehrere Datensätze als Bulk-Operation.
+     * Es werden alle Index-Änderungen zunächst in einem temporären Puffer gesammelt,
+     * und erst am Ende des Bulk-Vorgangs wird der Index einmal komplett aktualisiert.
+     *
+     * Erwartet ein Array, in dem jedes Element ein assoziatives Array mit den Schlüsseln
+     * 'recordId' (int) und 'newData' (array) ist.
+     *
+     * @param array $updates Liste der Updates.
+     * @return array Liste der Ergebnisse (true bei Erfolg oder Fehlermeldungen).
+     */
+    public function bulkUpdateRecords(array $updates): array
+    {
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($updates) {
+            $results = [];
+            $tempIndex = []; // Puffer für neue Offsets der aktualisierten Datensätze
+
+            foreach ($updates as $update) {
+                if (!isset($update['recordId'], $update['newData'])) {
+                    $results[] = ['error' => 'Missing recordId or newData'];
+                    continue;
+                }
+                try {
+                    $recordId = (int)$update['recordId'];
+                    $oldOffset = $this->indexBuilder->getIndexOffset($recordId);
+                    if ($oldOffset === null) {
+                        $results[] = false;
+                        continue;
+                    }
+                    $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
+                    if (!$oldData || !is_array($oldData) || !isset($oldData['id'])) {
+                        $results[] = false;
+                        continue;
+                    }
+
+                    // Vergleiche, ob Änderungen vorliegen (automatische Felder ignorieren)
+                    $fieldsToIgnore = ['updated_at', 'created_at', '_deleted', 'deleted_at'];
+                    $filteredOldData = array_diff_key($oldData, array_flip($fieldsToIgnore));
+                    $filteredNewData = array_diff_key($update['newData'], array_flip($fieldsToIgnore));
+
+                    if ($filteredOldData == $filteredNewData) {
+                        $results[] = true;
+                        continue;
+                    }
+
+                    // Markiere den alten Datensatz als gelöscht
+                    $oldData['_deleted'] = true;
+                    $oldData['deleted_at'] = time();
+                    $this->fileManager->appendRecord($oldData);
+
+                    // Erstelle den neuen Datensatz
+                    $newData = $update['newData'];
+                    $newData['id'] = $recordId;
+                    $newData['created_at'] = $oldData['created_at'] ?? time();
+                    $newData['updated_at'] = time();
+                    $newOffset = $this->fileManager->appendRecord($newData);
+                    
+                    // Pufferung der neuen Offset-Zuordnung
+                    $tempIndex[$recordId] = $newOffset;
+                    
+                    // Loggen, Cache aktualisieren und sekundäre Indizes anpassen
+                    $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_UPDATE, (string)$recordId, $newData);
+                    $this->addToCache((string)$recordId, $newData);
+                    $this->updateSecondaryIndexesOnUpdate($recordId, $oldData, $newData);
+
+                    $results[] = true;
+                } catch (Throwable $e) {
+                    $results[] = ['error' => $e->getMessage()];
+                }
+            }
+            // Am Ende: Holen des aktuellen Index und Mergen mit den neuen Änderungen
+            $currentIndex = $this->indexBuilder->getCurrentIndex();
+            $mergedIndex = array_merge($currentIndex, $tempIndex);
+            $this->indexBuilder->updateIndex($mergedIndex);
+
+            return $results;
+        });
+
+        FlatFileDBStatistics::recordPerformance('BULK_UPDATE', $measurement['duration']);
+        return $measurement['result'];
+    }
+
+    /**
+     * Löscht mehrere Datensätze als Bulk-Operation.
+     * Statt bei jedem Löschvorgang sofort den Index anzupassen, werden
+     * alle zu löschenden Record-IDs gesammelt und am Ende in einem Schritt aus dem Index entfernt.
+     *
+     * @param array $recordIds Liste der zu löschenden Record-IDs.
+     * @return array Liste der Ergebnisse (true bei Erfolg oder Fehlermeldungen).
+     */
+    public function bulkDeleteRecords(array $recordIds): array
+    {
+        $measurement = FlatFileDBStatistics::measurePerformance(function() use ($recordIds) {
+            $results = [];
+            $deletedIds = []; // Puffer für alle gelöschten Record-IDs
+
+            foreach ($recordIds as $recordId) {
+                try {
+                    $recordId = (int)$recordId;
+                    $oldOffset = $this->indexBuilder->getIndexOffset($recordId);
+                    if ($oldOffset === null) {
+                        $results[] = false;
+                        continue;
+                    }
+                    $oldData = $this->fileManager->readRecordAtOffset($oldOffset);
+                    if (!$oldData || (($oldData['_deleted'] ?? false) === true)) {
+                        $results[] = false;
+                        continue;
+                    }
+                    // Schreibe den Löschmarker in die Datei
+                    $oldData['_deleted'] = true;
+                    $oldData['deleted_at'] = time();
+                    $this->fileManager->appendRecord($oldData);
+                    
+                    // Merke die gelöschte Record-ID zur späteren Index-Anpassung
+                    $deletedIds[] = $recordId;
+                    
+                    $this->transactionLog->writeLog(FlatFileDBConstants::LOG_ACTION_DELETE, (string)$recordId);
+                    unset($this->dataCache[(string)$recordId]);
+                    $this->updateSecondaryIndexesOnDelete($recordId, $oldData);
+
+                    $results[] = true;
+                } catch (Throwable $e) {
+                    $results[] = ['error' => $e->getMessage()];
+                }
+            }
+            // Nach Abschluss: Aktualisiere den Index, indem alle gelöschten IDs entfernt werden.
+            $currentIndex = $this->indexBuilder->getCurrentIndex();
+            foreach ($deletedIds as $rid) {
+                unset($currentIndex[$rid]);
+            }
+            $this->indexBuilder->updateIndex($currentIndex);
+
+            return $results;
+        });
+
+        FlatFileDBStatistics::recordPerformance('BULK_DELETE', $measurement['duration']);
+        return $measurement['result'];
+    }
 
     private function recordMatchesConditions(array $record, array $whereConditions): bool {
         foreach ($whereConditions as $condition) {
@@ -675,5 +904,15 @@ class FlatFileTableEngine
         $this->indexBuilder->updateIndex([]);
         $this->clearCache();
         $this->indexedFields = [];
+    }
+
+    /**
+     * Gibt die Anzahl der aktuell indizierten Datensätze zurück.
+     *
+     * @return int Anzahl der Datensätze
+     */
+    public function getRecordCount(): int
+    {
+        return $this->indexBuilder->count();
     }
 }
