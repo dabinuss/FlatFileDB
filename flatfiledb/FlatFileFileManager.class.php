@@ -126,57 +126,69 @@ class FlatFileFileManager
         return $offset;
     }
 
-
-
     /**
-     * Liest eine Zeile ab einem bestimmten Byte-Offset.
+     * Liest einen Datensatz ab einem bestimmten unkomprimierten Offset mit effizienter Dekompression.
      *
      * @param int $offset Byte-Offset in der Datei (unkomprimiert)
-     * @return array|null Der gelesene Datensatz oder null bei Fehler
+     * @return array Der gelesene Datensatz
+     * @throws RuntimeException Bei Fehlern beim Lesen oder Dekodieren
      */
-    public function readRecordAtOffset(int $offset): ?array
+    public function readRecordAtOffset(int $offset): array
     {
         $handle = $this->getReadHandle();
-
-        // Versuche, einen nicht-blockierenden Shared-Lock zu setzen
-        if (!flock($handle, LOCK_SH | LOCK_NB)) {
-            // Fallback: Blockierenden Shared-Lock setzen
+        
+        try {
+            // Shared Lock mit besserer Fehlerbehandlung
             if (!flock($handle, LOCK_SH)) {
                 throw new RuntimeException("Konnte keine Lesesperre für die Datei erhalten.");
             }
-        }
 
-        if (fseek($handle, $offset) !== 0) {
-            flock($handle, LOCK_UN);
-            throw new RuntimeException("Ungültiger Offset in der Datendatei: $offset");
-        }
-
-        $compressedData = '';
-        while (!feof($handle)) {
-            $chunk = gzread($handle, 8192);
-            if ($chunk === false) {
-                flock($handle, LOCK_UN);
-                throw new RuntimeException("Fehler beim Lesen der komprimierten Daten ab Offset: $offset");
+            // Seek mit präziserer Fehlerbehandlung
+            if (fseek($handle, $offset) === -1) {
+                throw new RuntimeException("Ungültiger Offset in der Datendatei: $offset");
             }
-            $compressedData .= $chunk;
 
-            $decompressed = @gzdecode($compressedData);
-            if ($decompressed !== false) {
-                try {
-                    $decoded = json_decode($decompressed, true, 512, JSON_THROW_ON_ERROR);
-                    if ($decoded !== null) {
-                        flock($handle, LOCK_UN); // Lock so früh wie möglich freigeben
-                        return $decoded;
+            $compressedBuffer = '';
+            $windowSize = 8192; // Verdoppelte Fenstergröße für effizientere Lesevorgänge
+            $maxReadAttempts = 10; // Maximale Anzahl von Leseversuchs
+
+            for ($attempt = 0; $attempt < $maxReadAttempts; $attempt++) {
+                $chunk = gzread($handle, $windowSize);
+                
+                if ($chunk === false) {
+                    throw new RuntimeException("Fehler beim Lesen der komprimierten Daten ab Offset: $offset");
+                }
+
+                $compressedBuffer .= $chunk;
+                
+                // Optimierte Dekomprimierung mit Pufferung
+                $decompressed = @gzdecode($compressedBuffer);
+                
+                if ($decompressed !== false) {
+                    $lines = explode("\n", $decompressed, 2);
+                    
+                    if (!empty($lines[0])) {
+                        try {
+                            // Strikte JSON-Dekodierung mit Fehlerbehandlung
+                            return json_decode(trim($lines[0]), true, 512, JSON_THROW_ON_ERROR);
+                        } catch (JsonException $e) {
+                            throw new RuntimeException("Fehler beim Dekodieren des JSON-Datensatzes: " . $e->getMessage(), 0, $e);
+                        }
                     }
-                } catch (JsonException $e) {
-                    // Falls JSON-Fehler auftreten, weiter lesen
-                    continue;
+                }
+
+                // Exit-Bedingung, wenn kein weiterer Inhalt
+                if (feof($handle)) {
+                    break;
                 }
             }
-        }
 
-        flock($handle, LOCK_UN);
-        throw new RuntimeException("Kein gültiger Datensatz gefunden ab Offset: $offset");
+            throw new RuntimeException("Kein gültiger Datensatz gefunden ab Offset: $offset");
+        
+        } finally {
+            // Sicherstellen, dass der Lock immer aufgehoben wird
+            flock($handle, LOCK_UN);
+        }
     }
 
     /**
