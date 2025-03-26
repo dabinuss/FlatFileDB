@@ -12,7 +12,6 @@ class FlatFileConfig
     private string $indexFile;
     private string $logFile;
 
-    
     /**
      * @param string $dataFile Pfad zur Datendatei
      * @param string $indexFile Pfad zur Indexdatei
@@ -28,7 +27,16 @@ class FlatFileConfig
         $this->logFile = $logFile;
     }
 
-    public function getDataFile(): string { return $this->dataFile; }
-    public function getIndexFile(): string { return $this->indexFile; }
-    public function getLogFile(): string { return $this->logFile; }
+    public function getDataFile(): string
+    {
+        return $this->dataFile;
+    }
+    public function getIndexFile(): string
+    {
+        return $this->indexFile;
+    }
+    public function getLogFile(): string
+    {
+        return $this->logFile;
+    }
 }
