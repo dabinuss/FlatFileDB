@@ -31,5 +31,5 @@ class FlatFileDBConstants
 
     // *** NEU: Standard-Verzeichnisberechtigungen ***
     public const DEFAULT_DIR_PERMISSIONS = 0755; // Oder 0775 etc., je nach Bedarf
-    public const DEFAULT_BACKUP_DIR = dirname(self::DEFAULT_BASE_DIR) . DIRECTORY_SEPARATOR . 'backups';
+    public const DEFAULT_BACKUP_DIR = __DIR__ . '/../backups';
 }
