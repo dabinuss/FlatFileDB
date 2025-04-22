@@ -1,6 +1,7 @@
 <?php
 // Initialisierung der Anwendung
 session_start();
+error_log("--- init.php START ---");
 
 ini_set('display_errors', '1'); // Fehler im Browser anzeigen (Unsicher für Produktion!)
 ini_set('display_startup_errors', '1'); // Auch Startfehler anzeigen
@@ -18,26 +19,27 @@ $currentDbName = null;
 $currentDataDir = null;
 $databaseExists = false; // Flag, ob die ausgewählte DB auch physisch existiert
 
+error_log("init.php: Session 'current_db' Wert: " . ($_SESSION['current_db'] ?? 'Nicht gesetzt'));
+
 // Aktuelle Datenbank prüfen
 if (isset($_SESSION['current_db'])) {
     $potentialDbName = $_SESSION['current_db'];
     $potentialDataDir = DATA_DIR . '/' . $potentialDbName;
-    // Prüfe ZUSÄTZLICH, ob dieses Verzeichnis auch wirklich existiert
     if (is_dir($potentialDataDir)) {
         $currentDbName = $potentialDbName;
         $currentDataDir = $potentialDataDir;
         $databaseExists = true;
-        error_log("DB '$currentDbName' aus Session geladen."); // Debugging
+        error_log("init.php: DB '$currentDbName' (Pfad: $currentDataDir) aus Session geladen und Verzeichnis existiert."); // <-- Detaillierter
     } else {
-        // Session-Eintrag ist veraltet/ungültig
         unset($_SESSION['current_db']);
-        error_log("DB '$potentialDbName' aus Session existiert nicht mehr. Session-Eintrag gelöscht.");
+        error_log("init.php: DB '$potentialDbName' aus Session existiert nicht mehr (Pfad: $potentialDataDir). Session-Eintrag gelöscht."); // <-- Detaillierter
     }
 }
 
 if (!$databaseExists) {
     error_log("Keine gültige DB in Session. Suche nach erster verfügbarer DB...");
     $databases = getAllDatabases(DATA_DIR); // Ruft die Funktion auf, die Verzeichnisse scannt
+    error_log("init.php: getAllDatabases Ergebnis für Fallback: " . print_r($databases, true));
     if (!empty($databases)) {
         // Nimm die erste gefundene Datenbank
         $currentDbName = $databases[0]['name'];
@@ -76,6 +78,43 @@ if ($databaseExists && $currentDataDir) {
         $db = new FlatFileDB\FlatFileDatabase($currentDataDir);
         $handler = new FlatFileDB\FlatFileDatabaseHandler($db);
         $stats = new FlatFileDB\FlatFileDBStatistics($db);
+
+        // --- NEU: Registriere alle Tabellen aus tables.json ---
+        $tablesJsonPath = $currentDataDir . '/tables/tables.json';
+        if (file_exists($tablesJsonPath) && is_readable($tablesJsonPath)) {
+            $jsonContent = @file_get_contents($tablesJsonPath);
+            if ($jsonContent !== false) {
+                $tableNamesFromJson = json_decode($jsonContent, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($tableNamesFromJson)) {
+                    if (!empty($tableNamesFromJson)) {
+                        error_log("init.php: Registriere Tabellen aus tables.json: " . implode(', ', $tableNamesFromJson));
+                        // $db->registerTables($tableNamesFromJson); // Falls diese Methode existiert - effizienter
+                        // Alternative: Einzeln registrieren
+                        foreach ($tableNamesFromJson as $tableNameToRegister) {
+                            try {
+                                $engine = $db->registerTable($tableNameToRegister);
+                                if (!$engine) {
+                                    error_log("init.php WARNUNG: registerTable('$tableNameToRegister') gab kein Engine-Objekt zurück.");
+                                }
+                            } catch (Exception $regEx) {
+                                // Fehler beim Registrieren einer einzelnen Tabelle loggen, aber weitermachen
+                                error_log("init.php FEHLER beim automatischen Registrieren von Tabelle '$tableNameToRegister': " . $regEx->getMessage());
+                            }
+                        }
+                        error_log("init.php: Automatische Registrierung abgeschlossen.");
+                    } else {
+                        error_log("init.php: tables.json ist leer, keine Tabellen automatisch zu registrieren.");
+                    }
+                } else {
+                    error_log("init.php WARNUNG: Konnte tables.json nicht dekodieren für automatische Registrierung.");
+                }
+            } else {
+                error_log("init.php WARNUNG: Konnte tables.json nicht lesen für automatische Registrierung.");
+            }
+        } else {
+            error_log("init.php INFO: Keine tables.json gefunden ($tablesJsonPath), keine Tabellen automatisch zu registrieren.");
+        }
+        // --- Ende automatische Registrierung ---
 
         // Globale Variablen setzen
         $GLOBALS['db'] = $db;
@@ -134,6 +173,8 @@ if ($databaseExists && $currentDataDir) {
 
 $GLOBALS['currentDb'] = $currentDbName;
 $GLOBALS['currentDataDir'] = $currentDataDir; // Kann null sein!
+
+error_log("init.php ENDE: Globals gesetzt - currentDb: " . ($GLOBALS['currentDb'] ?? 'null') . ", db Objekt: " . (is_object($GLOBALS['db']) ? get_class($GLOBALS['db']) : 'null'));
 
 // --- Hilfsfunktionen (JSON, AJAX Check) ---
 // Funktion zum sicheren Ausgeben von JSON

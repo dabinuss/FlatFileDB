@@ -90,8 +90,9 @@ switch ($action) {
 
         try {
             // Die Hilfsfunktion insertRecord erwartet das dekodierte Array
-            $result = insertRecord($handler, $tableName, $data);
-            outputJSON($result);
+            $newId = insertRecord($handler, $tableName, $data);
+            outputJSON(['success' => true, 'id' => $newId]);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/data.php (Action: insert, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Einfügen des Datensatzes.']);
@@ -132,8 +133,9 @@ switch ($action) {
 
         try {
             // Die Hilfsfunktion updateRecord erwartet das dekodierte Array
-            $result = updateRecord($handler, $tableName, $id, $data);
-            outputJSON($result);
+            $success = updateRecord($handler, $tableName, $id, $data);
+            outputJSON(['success' => $success]);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/data.php (Action: update, Table: $tableName, ID: $id): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Aktualisieren des Datensatzes.']);
