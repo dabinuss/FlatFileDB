@@ -11,20 +11,18 @@ use stdClass;
 
 class FlatFileIndexBuilder
 {
-    /** @var array<int, array{offset: int, length: int}> Primärindex (recordId => blockInfo) */
+
     private array $indexData = [];
-    /** @var array<string, array<string, list<int>>> Sekundärindizes (fieldName => [valueString => [recordId, ...]]) */
     private array $secondaryIndexes = [];
-    /** @var array<string, bool> Merkt sich, welche sekundären Indizes geändert wurden und gespeichert werden müssen */
     private array $secondaryIndexesDirty = [];
 
     private FlatFileConfig $config;
     private int $nextId = 1;
     private bool $indexDirty = false; // Primary index dirty flag
 
-    /** @var resource|null File handle for the ID generation lock file */
     private $idLockHandle = null;
     private string $idLockFile = '';
+    private string $tableDir = '';
 
     /**
      * @param FlatFileConfig $config
@@ -33,43 +31,33 @@ class FlatFileIndexBuilder
     public function __construct(FlatFileConfig $config)
     {
         $this->config = $config;
-        $indexFile = $this->config->getIndexFile();
-        $indexDir = dirname($indexFile);
+        $indexFile = $this->config->getIndexFile(); // Ist jetzt z.B. /path/to/db/users/index.json
 
-        // ID Lock file path
-        $this->idLockFile = $indexDir . DIRECTORY_SEPARATOR . basename($indexFile) . '.id.lock';
+        // --- NEU: Tabellenverzeichnis ableiten ---
+        $this->tableDir = dirname($indexFile);
+        // --- Ende NEU ---
 
-        // Ensure index directory exists and is writable
-        if (!is_dir($indexDir)) {
-            if (!@mkdir($indexDir, FlatFileDBConstants::DEFAULT_DIR_PERMISSIONS, true)) {
-                if (!is_dir($indexDir)) { // Check again
-                    $error = error_get_last();
-                    $errorMsg = $error ? " ({$error['message']})" : "";
-                    throw new RuntimeException("Index-Verzeichnis '$indexDir' konnte nicht erstellt werden{$errorMsg}.");
-                }
-            }
+        // ID Lock file path (im Tabellenverzeichnis!)
+        $this->idLockFile = $this->tableDir . DIRECTORY_SEPARATOR . '.id.lock'; // Einfacherer Name
+
+        // Ensure table directory exists and is writable (sollte durch DB-Konstruktor passiert sein, aber sicher ist sicher)
+        if (!is_dir($this->tableDir)) {
+             // Direkt Fehler werfen, da es existieren *muss*
+             throw new RuntimeException("Tabellen-Index-Verzeichnis '{$this->tableDir}' existiert nicht.");
         }
-        if (!is_writable($indexDir)) { // Check writability after ensuring existence
-            throw new RuntimeException("Index-Verzeichnis '$indexDir' ist nicht beschreibbar.");
+        if (!is_writable($this->tableDir)) {
+             throw new RuntimeException("Tabellen-Index-Verzeichnis '{$this->tableDir}' ist nicht beschreibbar.");
         }
 
         // Load primary index immediately, handle potential corruption
         try {
-            $this->loadIndex();
+            $this->loadIndex(); // loadIndex prüft Existenz/Lesbarkeit von indexFile
         } catch (Throwable $e) {
-            // Log the error, but constructor shouldn't fail completely if index is corrupt
-            // loadIndex already attempts backup and reset.
-            error_log("Fehler beim initialen Laden des Primärindex: " . $e->getMessage());
-            // Ensure indexData is array and nextId is calculated even on error
-            if (!is_array($this->indexData))
-                $this->indexData = [];
+            error_log("Fehler beim initialen Laden des Primärindex ({$indexFile}): " . $e->getMessage());
+            if (!is_array($this->indexData)) $this->indexData = [];
             $this->recalculateNextId();
-            // Secondary indexes are loaded lazily, so no action needed here.
         }
-        // Recalculate nextId based on loaded (or reset) index
-        // $this->recalculateNextId(); // Already called within loadIndex
-
-        // Load secondary index definitions (which files exist), but not the data yet
+        // Discover secondary indexes based on files *within the tableDir*
         $this->discoverSecondaryIndexes();
     }
 
@@ -538,20 +526,16 @@ class FlatFileIndexBuilder
             throw new InvalidArgumentException("Feldname für Index darf nicht leer sein.");
         }
 
-        // Sanitize field name: Replace invalid chars with underscore, ensure it's not just dots/underscores
+        // Sanitize field name
         $sanitizedFieldName = preg_replace('/[^-._a-zA-Z0-9]/', '_', $trimmedFieldName);
-        // Prevent names like ".." or "._." etc.
         if (trim($sanitizedFieldName, '._') === '') {
             throw new InvalidArgumentException("Feldname '$fieldName' für Index ergibt nach Bereinigung einen ungültigen String ('$sanitizedFieldName').");
         }
 
-        $basePath = dirname($this->config->getIndexFile());
-        $primaryIndexBaseName = basename($this->config->getIndexFile());
-        // Extract table base name by removing '_index.json' (or configured extension)
-        $tableBaseName = preg_replace('/_index' . preg_quote(FlatFileDBConstants::INDEX_FILE_EXTENSION, '/') . '$/', '', $primaryIndexBaseName);
-
-        // Construct path: e.g., /path/to/data/tablename_index_fieldname.json
-        return $basePath . DIRECTORY_SEPARATOR . $tableBaseName . '_index_' . $sanitizedFieldName . FlatFileDBConstants::INDEX_FILE_EXTENSION;
+        // --- NEU: Pfad im Tabellenverzeichnis konstruieren ---
+        // Beispiel: /path/to/db/users/index_secondary_email.json
+        return $this->tableDir . DIRECTORY_SEPARATOR . FlatFileDBConstants::TABLE_INDEX_FILENAME . '_secondary_' . $sanitizedFieldName . FlatFileDBConstants::INDEX_FILE_EXTENSION;
+        // --- Ende NEU ---
     }
 
     /**
@@ -563,30 +547,29 @@ class FlatFileIndexBuilder
         $this->secondaryIndexes = [];
         $this->secondaryIndexesDirty = [];
 
-        $basePath = dirname($this->config->getIndexFile());
-        $primaryIndexBaseName = basename($this->config->getIndexFile());
-        $tableBaseName = preg_replace('/_index' . preg_quote(FlatFileDBConstants::INDEX_FILE_EXTENSION, '/') . '$/', '', $primaryIndexBaseName);
-        $pattern = $basePath . DIRECTORY_SEPARATOR . $tableBaseName . '_index_*' . FlatFileDBConstants::INDEX_FILE_EXTENSION;
+        // --- NEU: Suche im Tabellenverzeichnis ---
+        $pattern = $this->tableDir . DIRECTORY_SEPARATOR . FlatFileDBConstants::TABLE_INDEX_FILENAME . '_secondary_*' . FlatFileDBConstants::INDEX_FILE_EXTENSION;
+        // --- Ende NEU ---
 
         $indexFiles = glob($pattern);
         if ($indexFiles === false) {
-            // glob failed, log error but continue
             error_log("Fehler beim Suchen nach sekundären Indexdateien mit Muster: $pattern");
             return;
         }
 
-        $prefix = $tableBaseName . '_index_';
+        // --- NEU: Präfix/Suffix an neue Benennung anpassen ---
+        $prefix = FlatFileDBConstants::TABLE_INDEX_FILENAME . '_secondary_';
         $suffix = FlatFileDBConstants::INDEX_FILE_EXTENSION;
+        // --- Ende NEU ---
 
         foreach ($indexFiles as $filePath) {
             $fileName = basename($filePath);
+            // Prüfe, ob Dateiname passt (glob könnte mehr liefern als erwartet)
             if (str_starts_with($fileName, $prefix) && str_ends_with($fileName, $suffix)) {
                 $fieldName = substr($fileName, strlen($prefix), -strlen($suffix));
-                // Basic validation: ensure field name is not empty after extraction
                 if ($fieldName !== '') {
-                    // We know the file exists, but don't load content yet
-                    $this->secondaryIndexes[$fieldName] = []; // Initialize as empty, load on demand
-                    $this->secondaryIndexesDirty[$fieldName] = false; // Assume clean until modified
+                    $this->secondaryIndexes[$fieldName] = []; // Load on demand
+                    $this->secondaryIndexesDirty[$fieldName] = false;
                 } else {
                     error_log("Ungültiger sekundärer Indexdateiname gefunden (leerer Feldname): $filePath");
                 }
@@ -1312,8 +1295,8 @@ class FlatFileIndexBuilder
         if (empty($this->idLockFile)) {
              // Rekonstruiere den Pfad, falls nicht gesetzt (Fallback)
              $indexFile = $this->config->getIndexFile();
-             $indexDir = dirname($indexFile);
-             $this->idLockFile = $indexDir . DIRECTORY_SEPARATOR . basename($indexFile) . '.id.lock';
+             $this->tableDir = dirname($indexFile); // Leite Tabellenverzeichnis ab
+             $this->idLockFile = $this->tableDir . DIRECTORY_SEPARATOR . '.id.lock';
         }
         return $this->idLockFile;
     }

@@ -554,7 +554,7 @@ class FlatFileDatabaseHandler
 
     /**
      * Löscht eine Tabelle vollständig aus der Datenbank.
-     * Entfernt alle Dateien und Verweise auf die Tabelle.
+     * Leert/Löscht die Dateien der Tabelle und entfernt sie aus dem Manifest.
      *
      * @param string $tableName Der Name der zu löschenden Tabelle
      * @return bool True wenn erfolgreich, sonst false
@@ -562,77 +562,60 @@ class FlatFileDatabaseHandler
      */
     public function dropTable(string $tableName): bool
     {
-        $this->ensureTableSelected();
-        
-        // Prüfen, ob die zu löschende Tabelle die aktuell ausgewählte ist
-        if ($this->tableName !== $tableName) {
-            throw new RuntimeException("Die zu löschende Tabelle '$tableName' muss zuerst mit table() ausgewählt werden.");
+        // Stelle sicher, dass eine Tabelle ausgewählt *war*, aber prüfe gegen $tableName
+        if ($this->tableName === null && !$this->db->hasTable($tableName)) {
+            throw new RuntimeException("Keine Tabelle ausgewählt und Tabelle '$tableName' ist nicht registriert.");
         }
-
-        if (!$this->db->hasTable($tableName)) {
+        // Prüfe explizit gegen den übergebenen Namen
+        if ($this->tableName !== null && $this->tableName !== $tableName) {
+            throw new RuntimeException("Die zu löschende Tabelle '$tableName' stimmt nicht mit der aktuell im Handler ausgewählten Tabelle ('{$this->tableName}') überein. Bitte table('$tableName') zuerst aufrufen.");
+        }
+        // Oder, wenn keine Tabelle im Handler ausgewählt war, prüfen ob sie existiert
+        if ($this->tableName === null && !$this->db->hasTable($tableName)) {
             throw new RuntimeException("Tabelle '$tableName' existiert nicht und kann nicht gelöscht werden.");
         }
 
+
         try {
-            // Tabellen-Engine holen
+            // Tabellen-Engine holen (wirft Fehler, wenn nicht registriert)
             $engine = $this->db->table($tableName);
-            
-            // Zuerst Tabelle leeren, um alle Datensätze zu entfernen
-            $engine->clearTable();
-            
-            // Nun die Tabellendateien physisch löschen
-            // Hierfür benötigen wir die Konfigurationspfade
-            $config = $engine->getConfig();
-            $filesToDelete = [
-                $config->getDataFile(),
-                $config->getIndexFile(),
-                $config->getLogFile()
-            ];
-            
-            // Sekundäre Indizes finden und zum Löschen markieren
-            $indexBuilder = $engine->getIndexBuilder();
-            foreach ($indexBuilder->getManagedIndexedFields() as $fieldName) {
-                try {
-                    $indexFile = $indexBuilder->getSecondaryIndexFilePath($fieldName);
-                    $filesToDelete[] = $indexFile;
-                } catch (Throwable $e) {
-                    error_log("Warnung: Konnte Pfad des Sekundärindex '$fieldName' für Tabelle '$tableName' nicht ermitteln: " . $e->getMessage());
-                }
-            }
-            
-            // ID-Lock-Datei auch löschen
-            $filesToDelete[] = $indexBuilder->getIdLockFilePath();
-            
-            // Alle Dateien löschen
-            $deleteErrors = [];
-            foreach ($filesToDelete as $filePath) {
-                if (file_exists($filePath)) {
-                    if (!@unlink($filePath)) {
+
+            // 1. Tabelle leeren (löscht Inhalt der Dateien und Verzeichnisse soweit möglich)
+            $engine->clearTable(); // clearTable kümmert sich jetzt intern um die Dateien im Tabellenverzeichnis
+
+            // 2. Zusätzlich das leere Tabellenverzeichnis selbst löschen
+            $tableDir = dirname($engine->getConfig()->getDataFile()); // Sicherster Weg zum Pfad
+            if (is_dir($tableDir)) {
+                // Versuche, das Verzeichnis zu löschen (funktioniert nur, wenn leer)
+                if (!@rmdir($tableDir)) {
+                    // Erneuter Versuch nach kurzer Pause
+                    usleep(10000); // 10ms
+                    if (!@rmdir($tableDir)) {
                         $error = error_get_last();
                         $errorMsg = $error ? " ({$error['message']})" : "";
-                        $deleteErrors[] = "Konnte Datei '$filePath' nicht löschen{$errorMsg}";
+                        // Logge nur als Warnung, da die Hauptdaten weg sind
+                        error_log("Warnung [DropTable]: Konnte leeres Tabellenverzeichnis '$tableDir' nicht löschen{$errorMsg}. Manuelle Bereinigung eventuell nötig.");
                     }
                 }
             }
-            
-            // Wenn es Fehler beim Löschen gab, Warnung loggen aber fortfahren
-            if (!empty($deleteErrors)) {
-                foreach ($deleteErrors as $error) {
-                    error_log("Warnung beim Löschen der Tabelle '$tableName': $error");
-                }
-            }
-            
-            // Zum Schluss Tabellenverweise aus der Datenbank entfernen
-            // Dies erfordert eine interne Methode in der FlatFileDatabase-Klasse, die wir aufrufen müssten
 
-            // Zustand zurücksetzen
-            $this->db->unregisterTable($tableName);
+            // 3. Tabelle aus der Datenbank-Instanz und dem Manifest entfernen
+            $unregistered = $this->db->unregisterTable($tableName);
+
+            // 4. Handler-Zustand zurücksetzen
             $this->resetState();
-            
-            return true;
+
+            return $unregistered; // Gibt true zurück, wenn die Deregistrierung (inkl. Manifest) geklappt hat
+
         } catch (Throwable $e) {
+            // Zustand trotzdem zurücksetzen
+            $this->resetState();
             // Aufgetretene Fehler loggen und weiterwerfen
             error_log("Fehler beim Löschen der Tabelle '$tableName': " . $e->getMessage());
+            // Wirf die spezifische Exception oder eine generische RuntimeException
+            if ($e instanceof RuntimeException || $e instanceof InvalidArgumentException) {
+                throw $e;
+            }
             throw new RuntimeException("Fehler beim Löschen der Tabelle '$tableName': " . $e->getMessage(), 0, $e);
         }
     }

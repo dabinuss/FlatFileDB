@@ -32,4 +32,11 @@ class FlatFileDBConstants
     // *** NEU: Standard-Verzeichnisberechtigungen ***
     public const DEFAULT_DIR_PERMISSIONS = 0755; // Oder 0775 etc., je nach Bedarf
     public const DEFAULT_BACKUP_DIR = __DIR__ . '/../backups';
+
+    public const MANIFEST_FILE = 'tables.json';
+    public const MANIFEST_LOCK_FILE = 'tables.lock';
+
+    public const TABLE_DATA_FILENAME = 'data';     // Wird zu data.jsonl.gz
+    public const TABLE_INDEX_FILENAME = 'index';   // Wird zu index.json
+    public const TABLE_LOG_FILENAME = 'log';       // Wird zu log.jsonl
 }

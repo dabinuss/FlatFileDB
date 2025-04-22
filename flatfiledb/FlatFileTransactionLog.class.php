@@ -23,32 +23,37 @@ class FlatFileTransactionLog
     public function __construct(FlatFileConfig $config)
     {
         $this->config = $config;
-        $this->logFile = $this->config->getLogFile();
-        $logDir = dirname($this->logFile);
+        $this->logFile = $this->config->getLogFile(); // Ist jetzt z.B. /path/to/db/users/log.jsonl
 
-        // Verzeichnis erstellen falls erforderlich
-        if (!is_dir($logDir)) {
-            if (!@mkdir($logDir, FlatFileDBConstants::DEFAULT_DIR_PERMISSIONS, true)) {
-                if (!is_dir($logDir)) { // Check again after mkdir attempt
-                    throw new RuntimeException("Log-Verzeichnis '$logDir' konnte nicht erstellt werden.");
-                }
-            }
-        } elseif (!is_writable($logDir)) {
-            throw new RuntimeException("Log-Verzeichnis '$logDir' ist nicht beschreibbar.");
+        // --- NEU: Tabellenverzeichnis ableiten und prüfen ---
+        $tableDir = dirname($this->logFile);
+
+        // Ensure table directory exists and is writable
+         // (Sollte durch FlatFileDatabase bereits erledigt sein, aber zur Sicherheit)
+        if (!is_dir($tableDir)) {
+             throw new RuntimeException("Tabellen-Logverzeichnis '$tableDir' existiert nicht.");
         }
+        if (!is_writable($tableDir)) {
+            throw new RuntimeException("Tabellen-Logverzeichnis '$tableDir' ist nicht beschreibbar.");
+        }
+         // --- Ende NEU ---
 
-        // Log-Datei erstellen oder sicherstellen, dass sie beschreibbar ist
+
+        // Log-Datei erstellen oder sicherstellen, dass sie beschreibbar ist *im Tabellenverzeichnis*
+        clearstatcache(true, $this->logFile);
         if (!file_exists($this->logFile)) {
-            // Use file_put_contents for atomic creation if possible, fallback to touch
             if (@file_put_contents($this->logFile, '', LOCK_EX | FILE_APPEND) === false) {
                 if (!file_exists($this->logFile)) { // Check again
-                    throw new RuntimeException("Log-Datei '{$this->logFile}' konnte nicht erstellt werden.");
-                }
-                if (!is_writable($this->logFile)) {
-                    throw new RuntimeException("Log-Datei '{$this->logFile}' ist nicht beschreibbar (nach Erstellversuch).");
+                    $error = error_get_last();
+                    $errorMsg = $error ? " ({$error['message']})" : "";
+                    throw new RuntimeException("Log-Datei '{$this->logFile}' konnte nicht erstellt werden{$errorMsg}.");
                 }
             }
-        } elseif (!is_writable($this->logFile)) {
+             @chmod($this->logFile, 0664);
+        }
+        // Prüfung auf Schreibbarkeit NACH Erstellversuch
+         clearstatcache(true, $this->logFile);
+        if (!is_writable($this->logFile)) {
             throw new RuntimeException("Log-Datei '{$this->logFile}' ist nicht beschreibbar.");
         }
     }
