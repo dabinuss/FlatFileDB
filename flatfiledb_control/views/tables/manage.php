@@ -1,19 +1,40 @@
 <?php
-$table = $db->table($activeTable);
-$schema = getTableSchemaFromTable($table);
-$indexes = getTableIndexNames($table);
-
-// Alle Felder aus Datensätzen extrahieren
-$fields = [];
-$records = $handler->table($activeTable)->limit(10)->find();
-foreach ($records as $record) {
-    foreach ($record as $field => $value) {
-        if ($field !== 'id' && !in_array($field, $fields)) {
-            $fields[] = $field;
-        }
-    }
+if (!isset($db) || !$db instanceof FlatFileDB\FlatFileDatabase) {
+    echo '<div class="alert alert-danger">Fehler: DB-Objekt nicht verfügbar.</div>';
+    exit; // Oder andere Fehlerbehandlung
 }
-sort($fields);
+// Handler sollte aus init.php/index.php verfügbar sein
+if (!isset($handler) || !$handler instanceof FlatFileDB\FlatFileDatabaseHandler) {
+    echo '<div class="alert alert-danger">Fehler: Handler-Objekt nicht verfügbar.</div>';
+    exit; // Oder andere Fehlerbehandlung
+}
+$schema = getTableSchema($handler, $activeTable); // <-- Korrigierter Aufruf für Schema
+// Indizes weiterhin über die Engine holen
+try {
+   $tableEngine = $db->table($activeTable); // Engine holen
+   $indexes = getTableIndexNames($tableEngine); // <-- Engine übergeben
+} catch (Exception $e) {
+   error_log("Fehler beim Holen der Engine für Index-Abruf ($activeTable): " . $e->getMessage());
+   $indexes = []; // Fallback
+   echo '<div class="alert alert-warning">Fehler beim Abrufen der Indexinformationen: ' . htmlspecialchars($e->getMessage()) . '</div>';
+}
+
+// Alle Felder aus Datensätzen extrahieren (Handler verwenden)
+$fields = [];
+try {
+   $records = $handler->table($activeTable)->limit(10)->find(); // Handler verwenden
+   foreach ($records as $record) {
+       foreach ($record as $field => $value) {
+           if ($field !== 'id' && !in_array($field, $fields)) {
+               $fields[] = $field;
+           }
+       }
+   }
+   sort($fields);
+} catch (Exception $e) {
+    error_log("Fehler beim Holen von Sample-Records für Feldliste ($activeTable): " . $e->getMessage());
+    echo '<div class="alert alert-warning">Fehler beim Ermitteln der Felder aus Datensätzen: ' . htmlspecialchars($e->getMessage()) . '</div>';
+}
 ?>
 
 <div class="card">

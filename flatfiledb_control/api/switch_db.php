@@ -10,6 +10,7 @@ switch ($action) {
 
         if (empty($dbName)) {
             outputJSON(['error' => 'Datenbankname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -26,6 +27,7 @@ switch ($action) {
 
             if (!$exists) {
                 outputJSON(['error' => "Datenbank '$dbName' existiert nicht"]);
+                exit;
             }
 
             // Datenbank in Session speichern
@@ -35,12 +37,15 @@ switch ($action) {
                 'success' => true,
                 'message' => "Datenbank auf '$dbName' gewechselt"
             ]);
+            
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     default:
         outputJSON(['error' => 'Ungültige Aktion']);
-        break;
+        exit;
+        // break;
 }

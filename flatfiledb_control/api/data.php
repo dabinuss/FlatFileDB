@@ -16,6 +16,7 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -23,8 +24,9 @@ switch ($action) {
             outputJSON(['success' => true, 'data' => $data]);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+       // break;
 
     case 'get':
         // Einzelnen Datensatz abrufen
@@ -33,10 +35,12 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         if ($id <= 0) {
             outputJSON(['error' => 'Gültige ID ist erforderlich']);
+            exit;
         }
 
         try {
@@ -46,13 +50,16 @@ switch ($action) {
 
             if (!$record) {
                 outputJSON(['error' => 'Datensatz nicht gefunden']);
+                exit;
             }
 
             outputJSON(['success' => true, 'record' => $record]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'insert':
         // Datensatz einfügen
@@ -88,8 +95,9 @@ switch ($action) {
         } catch (Exception $e) {
             error_log("API Fehler in api/data.php (Action: insert, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Einfügen des Datensatzes.']);
+            exit;
         }
-        break;
+        // break;
 
     case 'update':
         // Datensatz aktualisieren
@@ -129,8 +137,9 @@ switch ($action) {
         } catch (Exception $e) {
             error_log("API Fehler in api/data.php (Action: update, Table: $tableName, ID: $id): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Aktualisieren des Datensatzes.']);
+            exit;
         }
-        break;
+        // break;
 
     case 'delete':
         // Datensatz löschen
@@ -139,10 +148,12 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         if ($id <= 0) {
             outputJSON(['error' => 'Gültige ID ist erforderlich']);
+            exit;
         }
 
         try {
@@ -150,10 +161,12 @@ switch ($action) {
             outputJSON($result);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     default:
         outputJSON(['error' => 'Ungültige Aktion']);
-        break;
+        exit;
+        // break;
 }

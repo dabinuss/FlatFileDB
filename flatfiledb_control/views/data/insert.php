@@ -1,7 +1,10 @@
 <?php
 // Schema für Feldvalidierung
-$table = $db->table($activeTable);
-$schema = getTableSchemaFromTable($table);
+if (!isset($handler) || !$handler instanceof FlatFileDB\FlatFileDatabaseHandler) {
+    echo '<div class="alert alert-danger">Fehler: Handler-Objekt nicht verfügbar.</div>';
+    exit; // Oder andere Fehlerbehandlung
+}
+$schema = getTableSchema($handler, $activeTable); // <-- Korrigierter Aufruf
 
 // Wenn kein Schema definiert ist, mit leeren Standard beginnen
 if (empty($schema)) {

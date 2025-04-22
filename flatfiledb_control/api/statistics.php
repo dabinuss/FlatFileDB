@@ -11,25 +11,31 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         try {
             $tableStats = $stats->getTableStatistics($tableName);
             outputJSON(['success' => true, 'statistics' => $tableStats]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
+            
         }
-        break;
+        // break;
 
     case 'overall':
         // Gesamtstatistiken
         try {
             $allStats = $stats->getOverallStatistics();
             outputJSON(['success' => true, 'statistics' => $allStats]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'performance':
         // Performance-Metriken
@@ -43,20 +49,24 @@ switch ($action) {
             ]);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'reset_metrics':
         // Performance-Metriken zurücksetzen
         try {
             FlatFileDB\FlatFileDBStatistics::resetPerformanceMetrics();
             outputJSON(['success' => true, 'message' => 'Metriken erfolgreich zurückgesetzt']);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     default:
         outputJSON(['error' => 'Ungültige Aktion']);
-        break;
+        exit;
+        // break;
 }

@@ -111,6 +111,7 @@ if ($databaseExists && $currentDataDir) {
         if ($isAjax || $isApiCall) {
             http_response_code(500);
             outputJSON(['error' => 'Datenbank-Initialisierungsfehler. Server-Logs prüfen.']);
+            exit;
         } else {
             http_response_code(500);
             echo "<!DOCTYPE html><html><head><title>Fehler</title><meta charset='UTF-8'></head><body>";
@@ -154,5 +155,6 @@ function requireAjax()
         strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) != 'xmlhttprequest'
     ) {
         outputJSON(['error' => 'Nur AJAX-Anfragen erlaubt']);
+        exit;
     }
 }

@@ -15,8 +15,11 @@ if (!$record) {
 }
 
 // Schema für Feldvalidierung
-$table = $db->table($activeTable);
-$schema = getTableSchemaFromTable($table);
+if (!isset($handler) || !$handler instanceof FlatFileDB\FlatFileDatabaseHandler) {
+    echo '<div class="alert alert-danger">Fehler: Handler-Objekt nicht verfügbar.</div>';
+    exit; // Oder andere Fehlerbehandlung
+}
+$schema = getTableSchema($handler, $activeTable); // <-- Korrigierter Aufruf
 ?>
 
 <div class="card">

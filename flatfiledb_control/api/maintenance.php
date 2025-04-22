@@ -11,6 +11,7 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -18,18 +19,22 @@ switch ($action) {
             outputJSON($result);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'compact_all':
         // Alle Tabellen kompaktieren
         try {
             $results = $db->compactAllTables();
             outputJSON(['success' => true, 'results' => $results]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
+
         }
-        break;
+        // break;
 
     case 'backup':
         // Tabelle sichern
@@ -37,6 +42,7 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -44,8 +50,9 @@ switch ($action) {
             outputJSON($result);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'backup_all':
         // Alle Tabellen sichern
@@ -56,10 +63,13 @@ switch ($action) {
 
             $result = $db->createBackup(BACKUP_DIR);
             outputJSON(['success' => true, 'files' => $result]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
+
         }
-        break;
+        // break;
 
     case 'clear_cache':
         // Cache leeren
@@ -71,19 +81,23 @@ switch ($action) {
                 $table = $db->table($tableName);
                 $table->clearCache();
                 outputJSON(['success' => true, 'message' => 'Cache erfolgreich geleert']);
+                exit;
             } catch (Exception $e) {
                 outputJSON(['error' => $e->getMessage()]);
+                exit;
             }
         } else {
             try {
                 // Alle Caches leeren
                 $db->clearAllCaches();
                 outputJSON(['success' => true, 'message' => 'Alle Caches erfolgreich geleert']);
+                exit;
             } catch (Exception $e) {
                 outputJSON(['error' => $e->getMessage()]);
+                exit;
             }
         }
-        break;
+        // break;
 
     case 'log':
         // Transaktionslog abrufen
@@ -92,6 +106,7 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -99,8 +114,9 @@ switch ($action) {
             outputJSON($result);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'rotate_log':
         // Transaktionslog rotieren
@@ -108,6 +124,7 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -125,12 +142,15 @@ switch ($action) {
 
             $backupLogPath = $log->rotateLog(BACKUP_DIR);
             outputJSON(['success' => true, 'backup_path' => $backupLogPath]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     default:
         outputJSON(['error' => 'Ungültige Aktion']);
-        break;
+        exit;
+        // break;
 }

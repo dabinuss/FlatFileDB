@@ -1,4 +1,3 @@
-// Datei: views/tables/list.php
 <?php
 error_log(">>> DEBUG list.php START: \$db type = " . (isset($db) ? (is_object($db) ? get_class($db) : gettype($db)) : 'Not Set'));
 

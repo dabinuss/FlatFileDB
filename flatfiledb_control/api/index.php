@@ -12,16 +12,19 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         if (empty($field)) {
             outputJSON(['error' => 'Feldname ist erforderlich']);
+            exit;
         }
 
         try {
             // Überprüfen, ob Tabelle existiert
             if (!$db->hasTable($tableName)) {
                 outputJSON(['error' => 'Tabelle existiert nicht']);
+                exit;
             }
 
             // Index erstellen
@@ -29,10 +32,12 @@ switch ($action) {
             $table->createIndex($field);
 
             outputJSON(['success' => true, 'message' => 'Index erfolgreich erstellt']);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'delete':
         // Index löschen
@@ -41,16 +46,19 @@ switch ($action) {
 
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
+            exit;
         }
 
         if (empty($field)) {
             outputJSON(['error' => 'Feldname ist erforderlich']);
+            exit;
         }
 
         try {
             // Überprüfen, ob Tabelle existiert
             if (!$db->hasTable($tableName)) {
                 outputJSON(['error' => 'Tabelle existiert nicht']);
+                exit;
             }
 
             // Index löschen
@@ -58,10 +66,12 @@ switch ($action) {
             $table->dropIndex($field);
 
             outputJSON(['success' => true, 'message' => 'Index erfolgreich gelöscht']);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'list':
         // Indizes einer Tabelle auflisten
@@ -86,14 +96,16 @@ switch ($action) {
             $indexNames = getTableIndexNames($table);
 
             outputJSON(['success' => true, 'indexes' => $indexNames]);
-
+            exit;
         } catch (Exception $e) {
             error_log("Fehler beim Auflisten der Indizes für $tableName: " . $e->getMessage());
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     default:
         outputJSON(['error' => 'Ungültige Aktion']);
-        break;
+        exit;
+        // break;
 }

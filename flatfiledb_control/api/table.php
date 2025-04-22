@@ -161,7 +161,7 @@ switch ($action) {
             // $tableEngine->setSchema(...) // <<< ENTFERNT
 
             outputJSON(['success' => true, 'message' => "Tabelle '$tableName' erfolgreich erstellt.", 'tableName' => $tableName]); // Namen zurückgeben
-
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/table.php (Action: create, Table: $tableName): " . $e->getMessage() . "\n" . $e->getTraceAsString());
             // Cleanup Versuch (wie vorher)
@@ -180,8 +180,9 @@ switch ($action) {
             }
 
             outputJSON(['error' => "Fehler beim Erstellen der Tabelle: " . $e->getMessage()]);
+            exit;
         }
-        break; // Ende case 'create'
+        // break; // Ende case 'create'
 
     // --- Andere Cases ---
 
@@ -245,11 +246,13 @@ switch ($action) {
             error_log("Schema für Tabelle '$tableName' gesetzt. Required: " . json_encode($requiredFields) . ", Types: " . json_encode($fieldTypes));
 
             outputJSON(['success' => true, 'message' => 'Schema erfolgreich aktualisiert.']);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/table.php (Action: schema, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Speichern des Schemas: ' . $e->getMessage()]);
+            exit;
         }
-        break; // Ende case 'schema'
+        // break; // Ende case 'schema'
 
 
     case 'list':
@@ -280,11 +283,13 @@ switch ($action) {
             // Nun sollten $db, $stats, $handler gültig sein
             $tables = getAllTables($db, $stats, $handler);
             outputJSON(['success' => true, 'tables' => $tables]);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/table.php (Action: list): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Auflisten der Tabellen: ' . $e->getMessage(), 'tables' => []]);
+            exit;
         }
-        break;
+        // break;
 
     // ... andere Cases (delete, clear, compact, info, backup) bleiben wie im vorherigen Code ...
     case 'delete':
@@ -322,21 +327,25 @@ switch ($action) {
             if ($success === true) { // Explizite Prüfung auf true
                 error_log("Tabelle '$tableName' erfolgreich über Handler gelöscht.");
                 outputJSON(['success' => true, 'message' => "Tabelle '$tableName' erfolgreich gelöscht."]);
+                exit;
             } else {
                 // Dieser Fall sollte eigentlich nicht eintreten, wenn bei Fehler eine Exception geworfen wird.
                 // Aber sicherheitshalber loggen und Fehler melden.
                 error_log("Tabelle '$tableName' konnte nicht gelöscht werden (dropTable gab nicht true zurück).");
                 outputJSON(['error' => "Unbekannter Fehler beim Löschen der Tabelle '$tableName'."]);
+                exit;
             }
 
         } catch (RuntimeException $e) { // Fange die spezifische Exception ab
             error_log("API Fehler (RuntimeException) in api/table.php (Action: delete, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Löschen der Tabelle: ' . $e->getMessage()]);
+            exit;
         } catch (Exception $e) { // Fange andere mögliche Exceptions ab
             error_log("API Allgemeiner Fehler in api/table.php (Action: delete, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Allgemeiner Fehler beim Löschen der Tabelle: ' . $e->getMessage()]);
+            exit;
         }
-        break; // Ende case 'delete'
+        // break; // Ende case 'delete'
 
 
     case 'clear':
@@ -360,11 +369,13 @@ switch ($action) {
             $table->clearTable();
 
             outputJSON(['success' => true, 'message' => "Tabelle '$tableName' erfolgreich geleert."]);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/table.php (Action: clear, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Leeren der Tabelle: ' . $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
 
     case 'compact':
@@ -386,11 +397,13 @@ switch ($action) {
             $table->compactTable();
 
             outputJSON(['success' => true, 'message' => "Tabelle '$tableName' erfolgreich kompaktiert."]);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/table.php (Action: compact, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Kompaktieren der Tabelle: ' . $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'info':
         // Tabellen-Informationen abrufen (Code scheint ok, benötigt $stats)
@@ -416,12 +429,13 @@ switch ($action) {
                 throw new Exception("Tabellen-Informationen nicht gefunden für '$tableName'");
             }
             outputJSON(['success' => true, 'info' => $tableStats]);
-
+            exit;
         } catch (Exception $e) {
             error_log("Fehler beim Abrufen der Tabelleninfo für $tableName: " . $e->getMessage());
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'backup':
         // Tabelle sichern (Code scheint ok, benötigt BACKUP_DIR Konstante)
@@ -451,14 +465,17 @@ switch ($action) {
             $backupFiles = $table->backup($backupDir);
 
             outputJSON(['success' => true, 'message' => "Backup für Tabelle '$tableName' erstellt.", 'files' => $backupFiles]);
+            exit;
         } catch (Exception $e) {
             error_log("API Fehler in api/table.php (Action: backup, Table: $tableName): " . $e->getMessage());
             outputJSON(['error' => 'Fehler beim Sichern der Tabelle: ' . $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
 
     default:
         outputJSON(['error' => 'Ungültige Aktion: ' . $action]);
-        break;
+        exit;
+        // break;
 }

@@ -11,6 +11,7 @@ switch ($action) {
 
         if (empty($dbName)) {
             outputJSON(['error' => 'Datenbankname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -18,8 +19,9 @@ switch ($action) {
             outputJSON($result);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'delete':
         // Datenbank löschen
@@ -27,6 +29,7 @@ switch ($action) {
 
         if (empty($dbName)) {
             outputJSON(['error' => 'Datenbankname ist erforderlich']);
+            exit;
         }
 
         try {
@@ -34,18 +37,21 @@ switch ($action) {
             outputJSON($result);
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'list':
         // Alle Datenbanken auflisten
         try {
             $databases = getAllDatabases();
             outputJSON(['success' => true, 'databases' => $databases]);
+            exit;
         } catch (Exception $e) {
             outputJSON(['error' => $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     case 'backup':
         // Datenbank sichern
@@ -91,10 +97,12 @@ switch ($action) {
         } catch (Exception $e) {
             error_log("Fehler beim Backup der Datenbank $dbName: " . $e->getMessage());
             outputJSON(['error' => "Fehler beim Backup: " . $e->getMessage()]);
+            exit;
         }
-        break;
+        // break;
 
     default:
         outputJSON(['error' => 'Ungültige Aktion']);
-        break;
+        exit;
+        // break;
 }
