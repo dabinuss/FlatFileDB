@@ -150,6 +150,21 @@ class FlatFileTableEngine
         FlatFileDBStatistics::recordPerformance('CREATE_INDEX_' . strtoupper($fieldName), $measurement['duration']);
     }
 
+    /**
+     * Gibt das aktuell definierte Schema zurück.
+     *
+     * @return array{requiredFields?: list<string>, fieldTypes?: array<string, string>}
+     */
+    public function getSchema(): array
+    {
+        // Gibt einfach die interne Schema-Eigenschaft zurück.
+        // Stellt sicher, dass die Keys immer existieren, ggf. als leere Arrays.
+        return [
+            'requiredFields' => $this->schema['requiredFields'] ?? [],
+            'fieldTypes' => $this->schema['fieldTypes'] ?? []
+        ];
+    }
+
     /** @throws InvalidArgumentException | RuntimeException */
     public function dropIndex(string $fieldName): void
     {

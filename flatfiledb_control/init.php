@@ -79,43 +79,6 @@ if ($databaseExists && $currentDataDir) {
         $handler = new FlatFileDB\FlatFileDatabaseHandler($db);
         $stats = new FlatFileDB\FlatFileDBStatistics($db);
 
-        // --- NEU: Registriere alle Tabellen aus tables.json ---
-        $tablesJsonPath = $currentDataDir . '/tables/tables.json';
-        if (file_exists($tablesJsonPath) && is_readable($tablesJsonPath)) {
-            $jsonContent = @file_get_contents($tablesJsonPath);
-            if ($jsonContent !== false) {
-                $tableNamesFromJson = json_decode($jsonContent, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($tableNamesFromJson)) {
-                    if (!empty($tableNamesFromJson)) {
-                        error_log("init.php: Registriere Tabellen aus tables.json: " . implode(', ', $tableNamesFromJson));
-                        // $db->registerTables($tableNamesFromJson); // Falls diese Methode existiert - effizienter
-                        // Alternative: Einzeln registrieren
-                        foreach ($tableNamesFromJson as $tableNameToRegister) {
-                            try {
-                                $engine = $db->registerTable($tableNameToRegister);
-                                if (!$engine) {
-                                    error_log("init.php WARNUNG: registerTable('$tableNameToRegister') gab kein Engine-Objekt zurück.");
-                                }
-                            } catch (Exception $regEx) {
-                                // Fehler beim Registrieren einer einzelnen Tabelle loggen, aber weitermachen
-                                error_log("init.php FEHLER beim automatischen Registrieren von Tabelle '$tableNameToRegister': " . $regEx->getMessage());
-                            }
-                        }
-                        error_log("init.php: Automatische Registrierung abgeschlossen.");
-                    } else {
-                        error_log("init.php: tables.json ist leer, keine Tabellen automatisch zu registrieren.");
-                    }
-                } else {
-                    error_log("init.php WARNUNG: Konnte tables.json nicht dekodieren für automatische Registrierung.");
-                }
-            } else {
-                error_log("init.php WARNUNG: Konnte tables.json nicht lesen für automatische Registrierung.");
-            }
-        } else {
-            error_log("init.php INFO: Keine tables.json gefunden ($tablesJsonPath), keine Tabellen automatisch zu registrieren.");
-        }
-        // --- Ende automatische Registrierung ---
-
         // Globale Variablen setzen
         $GLOBALS['db'] = $db;
         $GLOBALS['handler'] = $handler;

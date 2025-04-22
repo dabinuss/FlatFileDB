@@ -8,20 +8,66 @@ switch ($action) {
     case 'create':
         // Neue Datenbank erstellen
         $dbName = isset($_POST['name']) ? trim($_POST['name']) : '';
-
+        $basePath = DATA_DIR; // Basispfad verwenden
+    
         if (empty($dbName)) {
             outputJSON(['error' => 'Datenbankname ist erforderlich']);
             exit;
         }
-
+        // Gültigkeitsprüfung
+         if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $dbName)) { // Angepasste Regex
+            outputJSON(['error' => 'Ungültiger Datenbankname. Nur Buchstaben, Zahlen, Unterstrich, Punkt, Bindestrich erlaubt.']);
+            exit;
+        }
+    
+        $dbPath = rtrim($basePath, '/') . '/' . $dbName;
+    
         try {
-            $result = createDatabase($dbName);
-            outputJSON($result);
+             // Prüfen, ob Verzeichnis bereits existiert
+            if (is_dir($dbPath)) {
+                outputJSON(['error' => 'Eine Datenbank mit diesem Namen existiert bereits.']);
+                exit;
+            }
+    
+            // Haupt-Verzeichnis erstellen
+            if (!@mkdir($dbPath, FlatFileDB\FlatFileDBConstants::DEFAULT_DIR_PERMISSIONS, true)) {
+                 if (!is_dir($dbPath)){ // Prüfen ob wirklich nicht erstellt
+                    throw new Exception("Fehler beim Erstellen des Haupt-Datenbankverzeichnisses '$dbPath'. Prüfen Sie die Berechtigungen.");
+                 }
+                 // Existiert doch - race condition? Egal, weiter...
+            }
+             @chmod($dbPath, FlatFileDB\FlatFileDBConstants::DEFAULT_DIR_PERMISSIONS); // Sicherstellen
+    
+             // Optional, aber empfohlen: Leeres Manifest im ROOT der DB erstellen
+             $manifestFilePath = $dbPath . '/' . FlatFileDB\FlatFileDBConstants::MANIFEST_FILE;
+             if (@file_put_contents($manifestFilePath, '[]', LOCK_EX) === false) {
+                 // Cleanup: Hauptverzeichnis löschen, wenn Manifest nicht erstellt werden kann
+                 @rmdir($dbPath);
+                 throw new Exception("Fehler beim Erstellen der leeren Manifest-Datei '$manifestFilePath'.");
+             }
+             @chmod($manifestFilePath, 0664);
+    
+    
+            // Erfolg
+            outputJSON([
+                'success' => true,
+                'message' => "Datenbank '$dbName' wurde erfolgreich initialisiert.",
+                'path' => $dbPath
+            ]);
+            exit;
+    
         } catch (Exception $e) {
+            // Sicherstellen, dass das Verzeichnis gelöscht wird, wenn etwas schiefgeht
+            if (is_dir($dbPath)) {
+                // Versuche, das Manifest zu löschen, bevor das Verzeichnis gelöscht wird
+                $manifestFilePath = $dbPath . '/' . FlatFileDB\FlatFileDBConstants::MANIFEST_FILE;
+                 if(file_exists($manifestFilePath)) @unlink($manifestFilePath);
+                 @rmdir($dbPath); // rmdir löscht nur leere Verzeichnisse
+            }
             outputJSON(['error' => $e->getMessage()]);
             exit;
         }
-        // break;
+        // break; // Nicht erreichbar
 
     case 'delete':
         // Datenbank löschen

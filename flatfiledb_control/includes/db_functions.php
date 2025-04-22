@@ -9,193 +9,105 @@
  * @param FlatFileDB\FlatFileDatabaseHandler|null $handler Die Handlerinstanz.
  * @return array Liste der Tabelleninformationen.
  */
-function getAllTables($db = null, $stats = null, $handler = null)
+function getAllTables($db = null, $stats = null, $handler = null) // Handler wird hier nicht mehr benötigt
 {
-    // 1. Instanzen und Pfad prüfen
+    // 1. Instanzen prüfen (wie vorher)
     $dbInstance = ($db instanceof FlatFileDB\FlatFileDatabase) ? $db : ($GLOBALS['db'] ?? null);
     $currentStats = ($stats instanceof FlatFileDB\FlatFileDBStatistics) ? $stats : ($GLOBALS['stats'] ?? null);
-    $currentHandler = ($handler instanceof FlatFileDB\FlatFileDatabaseHandler) ? $handler : ($GLOBALS['handler'] ?? null);
 
-    if (!isset($GLOBALS['currentDataDir']) || !is_string($GLOBALS['currentDataDir']) || !is_dir($GLOBALS['currentDataDir'])) { // Prüfe auch ob Verzeichnis existiert
-        error_log('getAllTables FEHLER: Globale Variable $currentDataDir ist nicht gesetzt, kein String oder kein gültiges Verzeichnis.');
-        return [];
-    }
-    $currentDataDir = $GLOBALS['currentDataDir'];
-    $tablesDir = $currentDataDir . '/tables'; // Definieren des korrekten Unterverzeichnisses
-
-    // 2. Strikte Prüfung der Objekte
-    if (
-        !$dbInstance instanceof FlatFileDB\FlatFileDatabase ||
-        !$currentStats instanceof FlatFileDB\FlatFileDBStatistics ||
-        !$currentHandler instanceof FlatFileDB\FlatFileDatabaseHandler
-    ) {
-        // Loggen, welche Instanz fehlt... (wie vorher)
-        $missing = [];
-        if (!$dbInstance instanceof FlatFileDB\FlatFileDatabase)
-            $missing[] = 'Database Object (Type: ' . gettype($dbInstance) . ')';
-        if (!$currentStats instanceof FlatFileDB\FlatFileDBStatistics)
-            $missing[] = 'Statistics Object (Type: ' . gettype($currentStats) . ')';
-        if (!$currentHandler instanceof FlatFileDB\FlatFileDatabaseHandler)
-            $missing[] = 'Handler Object (Type: ' . gettype($currentHandler) . ')';
-        error_log('getAllTables FEHLER: Benötigte Objekte fehlen oder sind ungültig. Fehlend/Ungültig: ' . implode(', ', $missing));
-        return [];
+    if (!$dbInstance instanceof FlatFileDB\FlatFileDatabase || !$currentStats instanceof FlatFileDB\FlatFileDBStatistics) {
+         // Loggen welche Instanz fehlt (wie vorher)
+         $missing = [];
+         if (!$dbInstance instanceof FlatFileDB\FlatFileDatabase) $missing[] = 'Database Object';
+         if (!$currentStats instanceof FlatFileDB\FlatFileDBStatistics) $missing[] = 'Statistics Object';
+         error_log('getAllTables FEHLER: Benötigte Objekte fehlen oder sind ungültig. Fehlend/Ungültig: ' . implode(', ', $missing));
+         return [];
     }
 
-    $logDbPath = isset($GLOBALS['currentDataDir']) && !empty($GLOBALS['currentDataDir']) ? $GLOBALS['currentDataDir'] : 'Unbekannt/Nicht gesetzt';
-    error_log("getAllTables START für DB-Pfad: " . $logDbPath); // <-- Korrigiert
+    $logDbPath = $GLOBALS['currentDataDir'] ?? 'Unbekannt/Nicht gesetzt'; // Korrekte Variable verwenden
+    error_log("getAllTables START für DB-Pfad: " . $logDbPath);
 
     $tableNames = [];
-    $source = "Keine Quelle"; // Debugging-Info
+    $source = "Keine Quelle";
 
-    // VERSUCH 1: tables.json direkt lesen (wahrscheinlichste Quelle)
-    $tablesJsonPath = $tablesDir . '/tables.json';
-    if (file_exists($tablesJsonPath) && is_readable($tablesJsonPath)) {
-        $content = @file_get_contents($tablesJsonPath);
-        if ($content !== false) {
-            $decoded = json_decode($content, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                // Nur nicht-leere Arrays verwenden
-                if (!empty($decoded)) {
-                    $tableNames = $decoded;
-                    $source = "tables.json";
-                    error_log("getAllTables: Tabellennamen erfolgreich aus '$tablesJsonPath' gelesen: " . print_r($tableNames, true));
-                } else {
-                    error_log("getAllTables INFO: '$tablesJsonPath' ist leer oder enthält leeres JSON-Array '[]'.");
-                }
-            } else {
-                error_log("getAllTables WARNUNG: '$tablesJsonPath' konnte nicht als JSON-Array dekodiert werden. Fehler: " . json_last_error_msg());
-            }
+    // VERSUCH 1: $dbInstance->getTableNames() (PRIMÄRE QUELLE)
+    try {
+        $namesFromDb = $dbInstance->getTableNames();
+        error_log("getAllTables: \$dbInstance->getTableNames() Roh-Ergebnis: " . print_r($namesFromDb, true));
+        if (!empty($namesFromDb) && is_array($namesFromDb) && array_is_list($namesFromDb)) {
+            $tableNames = $namesFromDb;
+            $source = "dbInstance->getTableNames()";
+            error_log("getAllTables: Tabellennamen über \$dbInstance->getTableNames() erhalten: " . print_r($tableNames, true));
         } else {
-            error_log("getAllTables WARNUNG: Konnte '$tablesJsonPath' nicht lesen (file_get_contents fehlgeschlagen).");
+            error_log("getAllTables INFO: \$dbInstance->getTableNames() gab leeres oder ungültiges Ergebnis zurück.");
         }
-    } else {
-        error_log("getAllTables INFO: '$tablesJsonPath' nicht gefunden oder nicht lesbar.");
+    } catch (Exception $e) {
+        error_log("getAllTables WARNUNG: Fehler beim Aufruf von \$dbInstance->getTableNames(): " . $e->getMessage());
     }
 
-    // VERSUCH 2: $dbInstance->getTableNames() (falls tables.json nicht erfolgreich war ODER leer war)
-    if (empty($tableNames)) { // Prüft weiterhin, ob $tableNames noch leer ist
-        error_log("getAllTables: Versuche Tabellennamen via \$dbInstance->getTableNames()..."); // <-- NEU
-        try {
-            $namesFromDb = $dbInstance->getTableNames();
-            // Loggen, was genau zurückkommt, auch wenn es leer ist
-            error_log("getAllTables: \$dbInstance->getTableNames() Roh-Ergebnis: " . print_r($namesFromDb, true)); // <-- NEU
-            if (!empty($namesFromDb) && is_array($namesFromDb)) { // Zusätzliche is_array Prüfung
-                $tableNames = $namesFromDb;
-                $source = "dbInstance->getTableNames()";
-                error_log("getAllTables: Tabellennamen über \$dbInstance->getTableNames() erhalten und verwendet: " . print_r($tableNames, true));
-            } else {
-                error_log("getAllTables INFO: \$dbInstance->getTableNames() gab leeres oder ungültiges Ergebnis zurück. Verwende es nicht.");
-            }
-        } catch (Exception $e) {
-            error_log("getAllTables WARNUNG: Fehler beim Aufruf von \$dbInstance->getTableNames(): " . $e->getMessage());
-        }
-    }
-
-    // VERSUCH 3: Fallback-Scan (wenn immer noch keine Namen gefunden wurden)
-    if (empty($tableNames)) { // Prüft weiterhin, ob $tableNames noch leer ist
-        error_log("getAllTables: Weder tables.json noch getTableNames() erfolgreich. Versuche Fallback-Scan in '$tablesDir'...");
-        // ... (Code für Fallback-Scan bleibt gleich) ...
-        if (!empty($foundNames)) { // Nur wenn Scan erfolgreich war
-            error_log("getAllTables Fallback: Gefundene Tabellennamen durch Scan: " . print_r($foundNames, true));
-            $tableNames = $foundNames; // Verwende die gescannten Namen
-            $source = "Fallback Dateisystem-Scan";
-        } else {
-            error_log("getAllTables Fallback: Keine Tabellennamen durch Scan gefunden."); // <-- NEU
-        }
-    }
-
-
-    // ENDGÜLTIGE PRÜFUNG: Wenn immer noch leer, gibt es wirklich keine Tabellen
+    // ENDGÜLTIGE PRÜFUNG
     if (empty($tableNames)) {
-        error_log("getAllTables ENDGÜLTIG: Keine Tabellennamen gefunden (Endgültige Quelle: $source). Rückgabe: Leeres Array."); // <-- NEU
+        error_log("getAllTables ENDGÜLTIG: Keine Tabellennamen gefunden (Quelle: $source). Rückgabe: Leeres Array.");
         return [];
     }
-    error_log("getAllTables: Verarbeite endgültig gefundene Tabellennamen (Quelle: $source): " . print_r($tableNames, true)); // <-- NEU
+    error_log("getAllTables: Verarbeite endgültig gefundene Tabellennamen (Quelle: $source): " . print_r($tableNames, true));
 
-    // --- Ab hier Verarbeitung der gefundenen $tableNames ---
+    // --- Statistiksammlung (angepasst) ---
     $tables = [];
-    // Prüfen, ob $currentStats gültig ist, BEVOR die Schleife beginnt
-    if (!$currentStats instanceof FlatFileDB\FlatFileDBStatistics) {
-        error_log("getAllTables FEHLER bei Statistiksammlung: Statistik-Objekt ungültig.");
-        // Fallback: Tabellen ohne Stats zurückgeben? Oder leeres Array?
-        // Hier geben wir Namen ohne Stats zurück
-        foreach ($tableNames as $name) {
-            $tables[] = ['name' => $name, 'created' => 'N/A', 'columns' => 'N/A', 'records' => 'N/A', 'record_count' => 'N/A'];
-        }
-        error_log("getAllTables WARNUNG: Gebe Tabellennamen ohne Statistikdaten zurück, da Statistik-Objekt fehlt.");
-        return $tables;
-    }
-    // Hole Gesamtstatistiken nur einmal
-    $allStats = $currentStats->getOverallStatistics();
-    error_log("getAllTables: Gesamtstatistiken geladen für Verarbeitung."); // <-- NEU
-
+    $allStats = $currentStats->getOverallStatistics(); // <-- sollte jetzt mit neuen Pfaden funktionieren
+    error_log("getAllTables: Gesamtstatistiken geladen für Verarbeitung.");
 
     foreach ($tableNames as $name) {
-        // Verwende $tablesDir für Pfade zu den Dateien!
-        $tableFilePath = $tablesDir . '/' . $name . '.json';
-        $metaFilePath = $tablesDir . '/' . $name . '_meta.json';
+        $tableStatData = $allStats[$name] ?? null; // Hole die Stats für diese Tabelle
 
-        // Initialize with defaults
-        $tableStat = [
-            'name' => $name, // Name hinzufügen für leichtere Zuordnung
-            'record_count' => 0,
-            'created' => 'N/A',
-            'columns' => 0 // Standard auf 0 statt 'N/A'
-        ];
+        if ($tableStatData === null || isset($tableStatData['error'])) {
+            // Fehler oder keine Stats gefunden, Fallback
+            error_log("getAllTables: Keine (gültigen) Statistik-Daten für Tabelle '$name' gefunden. Fallback wird versucht.");
+            $tables[] = [
+                'name' => $name,
+                'created' => 'N/A', // Versuche ggf. ctime des Tabellenverzeichnisses
+                'columns' => 'N/A',
+                'records' => 'N/A',
+                'record_count' => 'N/A'
+            ];
+            continue; // Nächste Tabelle
+        }
 
-        if (isset($allStats[$name]) && is_array($allStats[$name])) { // Prüfe, ob Statistik-Eintrag existiert und ein Array ist
-            $tableStat['record_count'] = (int) ($allStats[$name]['record_count'] ?? 0);
-            $tableStat['created'] = $allStats[$name]['created'] ?? date("Y-m-d H:i:s", @filectime($tableFilePath)) ?: 'N/A';
-            if (isset($allStats[$name]['columns']) && is_array($allStats[$name]['columns'])) { // Prüfe, ob 'columns' existiert und ein Array ist
-                $tableStat['columns'] = count($allStats[$name]['columns']);
-            } elseif (isset($allStats[$name]['types']) && is_array($allStats[$name]['types'])) { // Fallback auf 'types'
-                $tableStat['columns'] = count($allStats[$name]['types']);
-            }
-        } else {
-            error_log("getAllTables: Keine Statistik-Daten für Tabelle '$name' gefunden. Versuche Fallbacks.");
-            // Fallback für Erstellungsdatum
-            if (file_exists($tableFilePath)) {
-                $tableStat['created'] = date("Y-m-d H:i:s", @filectime($tableFilePath));
-            }
-            // Fallback für Spaltenanzahl (wie vorher)
-            try {
-                // Prüfe, ob Handler gültig ist
-                if (!$currentHandler instanceof FlatFileDB\FlatFileDatabaseHandler) {
-                    throw new Exception("Handler-Objekt ungültig für Spaltenanzahl-Fallback.");
-                }
-                // Hier könnte man direkt die Meta-Datei lesen, statt einen Datensatz zu holen
-                if (file_exists($metaFilePath)) {
-                    $metaContent = @file_get_contents($metaFilePath);
-                    $metaData = $metaContent ? json_decode($metaContent, true) : null;
-                    if ($metaData && isset($metaData['types']) && is_array($metaData['types'])) {
-                        $tableStat['columns'] = count($metaData['types']);
-                    } elseif ($metaData && isset($metaData['columns']) && is_array($metaData['columns'])) { // Fallback auf 'columns' in meta
-                        $tableStat['columns'] = count($metaData['columns']);
-                    }
-                }
-                // Wenn immer noch 0, versuche Datensatz (wie vorher)
-                if ($tableStat['columns'] === 0) {
-                    $sampleRecord = $currentHandler->table($name)->limit(1)->find();
-                    if (!empty($sampleRecord) && isset($sampleRecord[0]) && is_array($sampleRecord[0])) {
-                        $tableStat['columns'] = count($sampleRecord[0]);
-                    }
-                }
-
-            } catch (Exception $e) {
-                error_log("getAllTables: Konnte Spaltenanzahl für Tabelle '$name' nicht ermitteln (Fallback): " . $e->getMessage());
-                // Bleibt bei Default 0
+        // Berechne Sekundärindexgröße (wie vorher)
+        $secondaryIndexSize = 0;
+        if (isset($tableStatData['secondary_index_files']) && is_array($tableStatData['secondary_index_files'])) {
+            foreach ($tableStatData['secondary_index_files'] as $indexSize) {
+                 if (is_int($indexSize)) { // Stelle sicher, dass es eine Zahl ist
+                   $secondaryIndexSize += $indexSize;
+                 }
             }
         }
+
+         // Spaltenanzahl aus Schema holen (optional, braucht Anpassung in Engine)
+         $columnCount = 'N/A';
+         try {
+             $engine = $dbInstance->table($name); // Engine holen
+             if (method_exists($engine, 'getSchema')) { // Prüfen ob Methode existiert
+                 $schema = $engine->getSchema();
+                 if (isset($schema['types']) && is_array($schema['types'])) {
+                     $columnCount = count($schema['types']);
+                 }
+             }
+         } catch (Exception $e) {
+             error_log("getAllTables WARNUNG: Fehler beim Holen des Schemas für Spaltenanzahl ($name): " . $e->getMessage());
+         }
+
 
         $tables[] = [
             'name' => $name,
-            'created' => $tableStat['created'],
-            'columns' => $tableStat['columns'],
-            'records' => $tableStat['record_count'],
-            'record_count' => $tableStat['record_count'] // Doppelt, aber wird im Frontend verwendet
+            'created' => $tableStatData['created'] ?? date("Y-m-d H:i:s", @filectime($GLOBALS['currentDataDir'].'/'.$name)) ?: 'N/A', // Fallback auf Verzeichnis-Zeit
+            'columns' => $columnCount,
+            'records' => (int) ($tableStatData['record_count'] ?? 0),
+            'record_count' => (int) ($tableStatData['record_count'] ?? 0)
         ];
     }
-    error_log("getAllTables ENDE: Rückgabe von " . count($tables) . " Tabellen mit Statistikdaten."); // <-- NEU
+
+    error_log("getAllTables ENDE: Rückgabe von " . count($tables) . " Tabellen mit Statistikdaten.");
     return $tables;
 }
 
@@ -275,25 +187,18 @@ function getTableSchemaFromTable($table)
  */
 function getTableIndexNames($table)
 {
-    // Methoden testen, die wahrscheinlich existieren könnten
-    if (method_exists($table, 'getIndices')) {
-        return $table->getIndices();
+    if (!$table instanceof FlatFileDB\FlatFileTableEngine) {
+        error_log("getTableIndexNames FEHLER: Ungültiges Tabellen-Engine-Objekt übergeben.");
+        return [];
     }
-
-    if (method_exists($table, 'getAllIndices')) {
-        return array_keys($table->getAllIndices());
+    try {
+         // Korrekter Weg, um die Namen der Felder mit Sekundärindizes zu bekommen
+        $indexBuilder = $table->getIndexBuilder(); // Holt den IndexBuilder
+        return $indexBuilder->getManagedIndexedFields(); // Gibt list<string> zurück
+    } catch (Exception $e) {
+         error_log("Fehler beim Abrufen der Indexnamen über getIndexBuilder()->getManagedIndexedFields(): " . $e->getMessage());
+         return []; // Fallback
     }
-
-    if (method_exists($table, 'listIndices')) {
-        return $table->listIndices();
-    }
-
-    if (method_exists($table, 'getIndexedFields')) {
-        return $table->getIndexedFields();
-    }
-
-    // Fallback: Leeres Array zurückgeben
-    return [];
 }
 
 /**

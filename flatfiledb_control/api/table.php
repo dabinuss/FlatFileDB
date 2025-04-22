@@ -18,209 +18,109 @@ switch ($action) {
         $tableName = isset($_POST['table']) ? trim($_POST['table']) : '';
         $defineSchema = isset($_POST['schema']) && $_POST['schema'] === 'true';
         $columnsJson = ($defineSchema && isset($_POST['columns'])) ? $_POST['columns'] : null;
-        $metaFile = null; // Pfad zur _meta.json Datei
-        $registered = false;
-
+        $schemaToSet = null; // Vorbereiten für späteres Setzen
+    
         // --- Grundlegende Prüfungen ---
         if (empty($tableName)) {
             outputJSON(['error' => 'Tabellenname ist erforderlich']);
             exit;
         }
-        if (!preg_match('/^[a-zA-Z0-9_]+$/', $tableName)) {
-            outputJSON(['error' => 'Ungültiger Tabellenname. Nur Buchstaben, Zahlen und Unterstriche sind erlaubt.']);
+        // Regex Prüfung im Handler/DB ist robuster, aber hier ok
+        if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $tableName)) { // Angepasste Regex
+            outputJSON(['error' => 'Ungültiger Tabellenname. Nur Buchstaben, Zahlen, Unterstrich, Punkt, Bindestrich erlaubt.']);
             exit;
         }
         if (!isset($db) || !$db instanceof FlatFileDB\FlatFileDatabase) {
-             outputJSON(['error' => 'Interner Serverfehler: Datenbankobjekt nicht initialisiert.']);
-             exit;
-        }
-        if (!isset($currentDataDir) || !is_dir($currentDataDir)) {
-            outputJSON(['error' => 'Interner Serverfehler: Datenbankverzeichnis nicht korrekt gesetzt.']);
+            outputJSON(['error' => 'Interner Serverfehler: Datenbankobjekt nicht initialisiert.']);
             exit;
         }
         // --- Ende Grundlegende Prüfungen ---
-
+    
         try {
-            // Pfade definieren
-            $tablesDir = $currentDataDir . '/tables';
-            $metaFilePath = $tablesDir . '/' . $tableName . '_meta.json';
-            $tablesJsonPath = $tablesDir . '/tables.json'; // Pfad zur zentralen Tabellenliste
-            $metaFile = $metaFilePath; // Für mögliches Logging/Prüfung
-
-            // 1. Prüfen, ob Tabelle bereits existiert (Meta-Datei oder Registrierung)
-            // Statt $db->hasTable(), prüfen wir jetzt direkt die tables.json (zuverlässiger)
-             $currentTables = [];
-             if (file_exists($tablesJsonPath) && is_readable($tablesJsonPath)) {
-                 $jsonContent = @file_get_contents($tablesJsonPath);
-                 if ($jsonContent !== false) {
-                     $decoded = json_decode($jsonContent, true);
-                     if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                         $currentTables = $decoded;
-                     } else {
-                          error_log("WARNUNG: Konnte tables.json nicht dekodieren bei Tabellenprüfung.");
-                     }
-                 }
-             }
-            // Prüfung auf Meta-Datei und Eintrag in $currentTables
-            if (file_exists($metaFilePath) || in_array($tableName, $currentTables)) {
-                outputJSON(['error' => "Tabelle '$tableName' existiert bereits (als Meta-Datei oder ist in tables.json registriert)."]);
+            // 1. Prüfen, ob Tabelle bereits existiert (jetzt über die DB-Instanz)
+            if ($db->hasTable($tableName)) {
+                outputJSON(['error' => "Tabelle '$tableName' existiert bereits."]);
                 exit;
             }
-
-            // 2. 'tables' Verzeichnis sicherstellen
-            if (!is_dir($tablesDir)) {
-                if (!@mkdir($tablesDir, 0755, true)) {
-                    throw new Exception("Konnte das 'tables' Unterverzeichnis nicht erstellen: " . $tablesDir);
-                }
-                 error_log("Verzeichnis '$tablesDir' wurde erstellt.");
-            }
-
-            // 3. Metadaten vorbereiten (mit oder ohne Schema)
-            $finalMetaData = [
-                "name" => $tableName,
-                "created" => date("Y-m-d H:i:s"),
-                "columns" => [],
-                "required" => [],
-                "types" => [],
-                "records" => 0,
-                "auto_increment" => 1
-            ];
-            // Schema Verarbeitung... (BLEIBT GLEICH)
+    
+            // 2. Schema vorbereiten (falls definiert)
             if ($defineSchema && !empty($columnsJson)) {
-                // ... (Code zum Parsen von columnsJson - BLEIBT GLEICH) ...
-                 error_log("Verarbeite Schema für '$tableName'. Empfangene Daten: " . $columnsJson);
-                 $schemaData = json_decode($columnsJson, true);
-                 if (json_last_error() === JSON_ERROR_NONE && is_array($schemaData)) {
-                     $parsedTypes = [];
-                     $parsedRequired = [];
-                     $parsedColumns = [];
-                     foreach ($schemaData as $col) { /* ... Parsing ... */ }
-                     if (!empty($parsedTypes)) {
-                         $finalMetaData['types'] = $parsedTypes;
-                         $finalMetaData['required'] = $parsedRequired;
-                         $finalMetaData['columns'] = $parsedColumns; // optional
-                         error_log("Schema für Tabelle '$tableName' erfolgreich verarbeitet.");
-                     } else {
-                         error_log("Keine validen Schema-Felder gefunden für '$tableName'.");
-                     }
-                 } else {
-                     error_log("WARNUNG: Konnte gesendete Schema-Daten für '$tableName' nicht dekodieren. JSON-Fehler: " . json_last_error_msg());
-                 }
+                error_log("Verarbeite Schema für '$tableName'. Empfangene Daten: " . $columnsJson);
+                $schemaData = json_decode($columnsJson, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($schemaData)) {
+                    $parsedTypes = [];
+                    $parsedRequired = [];
+                    foreach ($schemaData as $col) {
+                         if (isset($col['name'], $col['type']) && is_string($col['name']) && !empty(trim($col['name'])) && is_string($col['type'])) {
+                            $fieldName = trim($col['name']);
+                             // Hier einfache Validierung, FlatFileValidator wäre besser
+                             if (preg_match('/^[a-zA-Z0-9_]+$/', $fieldName)) {
+                                $parsedTypes[$fieldName] = $col['type'];
+                                if (isset($col['required']) && $col['required'] === true) {
+                                    $parsedRequired[] = $fieldName;
+                                }
+                             } else {
+                                 error_log("WARNUNG: Ungültiger Feldname im Schema übersprungen: " . $fieldName);
+                             }
+                        }
+                    }
+                    if (!empty($parsedTypes)) {
+                        $schemaToSet = ['requiredFields' => $parsedRequired, 'fieldTypes' => $parsedTypes];
+                        error_log("Schema für Tabelle '$tableName' erfolgreich vorbereitet.");
+                    } else {
+                        error_log("Keine validen Schema-Felder gefunden für '$tableName'.");
+                    }
+                } else {
+                    error_log("WARNUNG: Konnte gesendete Schema-Daten für '$tableName' nicht dekodieren. JSON-Fehler: " . json_last_error_msg());
+                }
             } else {
                 error_log("Kein Schema definiert oder keine Schema-Daten empfangen für '$tableName'.");
             }
-
-            // 4. Metadaten-Datei (_meta.json) schreiben (JETZT WIEDER VORHER)
-            error_log("Schreibe Metadaten-Datei '$metaFilePath'...");
-            $writeResultMeta = @file_put_contents($metaFile, json_encode($finalMetaData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-            if ($writeResultMeta === false) {
-                throw new Exception("Konnte die Metadaten-Datei '$tableName" . "_meta.json' nicht schreiben.");
-            }
-            @chmod($metaFile, 0664);
-            error_log("Metadaten-Datei '$metaFilePath' erfolgreich geschrieben (Bytes: " . $writeResultMeta . ").");
-
-            // 5. Tabelle zur tables.json HINZUFÜGEN (MANUELL)
-            error_log("Füge Tabelle '$tableName' zu '$tablesJsonPath' hinzu...");
-            // Lock holen, um Race Conditions zu vermeiden
-            $fp = @fopen($tablesJsonPath, 'c+'); // 'c+' erstellt Datei, falls nicht vorhanden, und erlaubt Lesen/Schreiben
-            if (!$fp) {
-                 @unlink($metaFile); // Cleanup Meta
-                 throw new Exception("Konnte tables.json '$tablesJsonPath' nicht öffnen/erstellen.");
-            }
-            if (!flock($fp, LOCK_EX)) { // Exklusiver Lock
-                 @fclose($fp);
-                 @unlink($metaFile); // Cleanup Meta
-                 throw new Exception("Konnte tables.json '$tablesJsonPath' nicht sperren.");
-            }
-            // Inhalt lesen (könnte leer sein)
-            $jsonContent = stream_get_contents($fp);
-            $currentTables = [];
-            if (!empty($jsonContent)) {
-                $decoded = json_decode($jsonContent, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                    $currentTables = $decoded;
-                } else {
-                     error_log("WARNUNG: Bestehender Inhalt von tables.json ist ungültig, wird überschrieben.");
-                }
-            }
-            // Neuen Namen hinzufügen, falls nicht schon da (Doppelcheck)
-            if (!in_array($tableName, $currentTables)) {
-                $currentTables[] = $tableName;
-                sort($currentTables); // Optional: Alphabetisch sortieren
-                 // Zurück an den Anfang schreiben und kürzen
-                 rewind($fp);
-                 ftruncate($fp, 0);
-                 if (fwrite($fp, json_encode($currentTables, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
-                     flock($fp, LOCK_UN); // Lock freigeben
-                     fclose($fp);
-                     @unlink($metaFile); // Cleanup Meta
-                     throw new Exception("Fehler beim Schreiben in tables.json '$tablesJsonPath'.");
-                 }
-                 error_log("Tabelle '$tableName' erfolgreich zu tables.json hinzugefügt.");
-            } else {
-                 error_log("WARNUNG: Tabelle '$tableName' war bereits in tables.json (sollte nicht passieren nach initialer Prüfung).");
-            }
-            // Lock freigeben und Datei schließen
-            fflush($fp); // Sicherstellen, dass alles geschrieben ist
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            @chmod($tablesJsonPath, 0664); // Berechtigungen
-
-
-            // 6. Bei der Bibliothek registrieren (könnte optional sein, wenn wir uns auf tables.json verlassen)
-            // Wir rufen es trotzdem auf, falls es interne Caches oder Zustände initialisiert.
-            error_log("Registriere Tabelle '$tableName' bei der DB-Instanz (nach manueller Meta/tables.json Erstellung)...");
+    
+    
+            // 3. Tabelle über die Bibliothek registrieren/erstellen
+            // Dies erstellt das Verzeichnis, die Dateien und aktualisiert das Manifest.
+            error_log("Registriere Tabelle '$tableName' über DB-Instanz...");
             $tableEngine = $db->registerTable($tableName);
             if (!$tableEngine instanceof FlatFileDB\FlatFileTableEngine) {
-                 error_log("WARNUNG: registerTable für '$tableName' gab kein gültiges Engine-Objekt zurück, aber Meta/tables.json wurden geschrieben.");
-                 // Hier nicht abbrechen, da die Tabelle über tables.json auffindbar sein sollte.
-            } else {
-                 error_log("Tabelle '$tableName' erfolgreich bei DB-Instanz registriert.");
+                // Sollte nicht passieren, wenn keine Exception geworfen wird
+                throw new Exception("registerTable für '$tableName' gab kein gültiges Engine-Objekt zurück.");
             }
-
-
-            // 7. Erfolgsantwort senden
+            error_log("Tabelle '$tableName' erfolgreich bei DB-Instanz registriert.");
+    
+            // 4. Schema setzen (falls vorbereitet)
+            if ($schemaToSet !== null) {
+                error_log("Setze vorbereitetes Schema für Tabelle '$tableName'...");
+                // Verwende den Handler, um das Schema zu setzen
+                if (!isset($handler) || !$handler instanceof FlatFileDB\FlatFileDatabaseHandler) {
+                    throw new Exception("Handler-Objekt nicht verfügbar zum Setzen des Schemas.");
+                }
+                $handler->table($tableName)->setSchema($schemaToSet['requiredFields'], $schemaToSet['fieldTypes']);
+                error_log("Schema für Tabelle '$tableName' erfolgreich gesetzt.");
+                // HINWEIS: Abhängig davon, ob setSchema der Bibliothek persistent ist!
+            }
+    
+            // 5. Erfolgsantwort senden
             outputJSON(['success' => true, 'message' => "Tabelle '$tableName' erfolgreich erstellt und registriert.", 'tableName' => $tableName]);
             exit;
-
+    
         } catch (Exception $e) {
             // Allgemeine Fehlerbehandlung
             error_log("API Fehler in api/table.php (Action: create, Table: $tableName): " . $e->getMessage() . "\n" . $e->getTraceAsString());
-            // Cleanup Versuch: Meta-Datei und Eintrag aus tables.json entfernen
+            // Cleanup Versuch: NUR wenn Tabelle registriert wurde, wieder entfernen
             try {
-                // Meta entfernen
-                if ($metaFile && file_exists($metaFile)) {
-                    @unlink($metaFile);
-                    error_log("Cleanup: Meta-Datei '$metaFile' nach Fehler gelöscht.");
-                }
-                // Eintrag aus tables.json entfernen (falls hinzugefügt)
-                if (file_exists($tablesJsonPath)) {
-                    $fp = @fopen($tablesJsonPath, 'c+');
-                    if ($fp && flock($fp, LOCK_EX)) {
-                         $jsonContent = stream_get_contents($fp);
-                         $currentTables = [];
-                         if(!empty($jsonContent)) {
-                              $decoded = json_decode($jsonContent, true);
-                              if(is_array($decoded)) $currentTables = $decoded;
-                         }
-                         $initialCount = count($currentTables);
-                         $currentTables = array_filter($currentTables, function($t) use ($tableName) { return $t !== $tableName; });
-                         if (count($currentTables) < $initialCount) { // Nur schreiben, wenn was entfernt wurde
-                              sort($currentTables);
-                              rewind($fp);
-                              ftruncate($fp, 0);
-                              fwrite($fp, json_encode($currentTables, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                              error_log("Cleanup: Tabelle '$tableName' aus tables.json nach Fehler entfernt.");
-                         }
-                         fflush($fp);
-                         flock($fp, LOCK_UN);
-                         fclose($fp);
-                    }
+                if ($db->hasTable($tableName)) {
+                     error_log("Cleanup: Versuche Tabelle '$tableName' nach Fehler zu deregistrieren...");
+                     $db->unregisterTable($tableName); // Entfernt aus Instanz und Manifest
+                     error_log("Cleanup: Tabelle '$tableName' deregistriert.");
+                     // Optional: Verzeichnis löschen (kann fehlschlagen, wenn nicht leer)
+                     $tableDir = ($GLOBALS['currentDataDir'] ?? DATA_DIR) . '/' . $tableName;
+                     if(is_dir($tableDir)) @rmdir($tableDir);
                 }
             } catch (Exception $cleanupEx) {
-                error_log("Cleanup Fehler nach Exception beim Erstellen von '$tableName': " . $cleanupEx->getMessage());
+                 error_log("Cleanup Fehler nach Exception beim Erstellen von '$tableName': " . $cleanupEx->getMessage());
             }
-
+    
             outputJSON(['error' => "Fehler beim Erstellen der Tabelle '$tableName': " . $e->getMessage()]);
             exit;
         }
