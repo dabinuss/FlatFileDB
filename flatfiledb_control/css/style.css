@@ -1,0 +1,222 @@
+/* ========================
+   CSS-Variablen
+   ======================== */
+   :root {
+    /* Grundfarben */
+    --bg:          #f8f9fa;
+    --surface:     #ffffff;
+    --primary:     #4e73df;
+    --primary-alt: #2e59d9;
+    --text:        #343a40;
+    --border:      #e9ecef;
+    --muted:       #6c757d;
+  
+    /* Status */
+    --success: #155724; --success-bg: #d4edda;
+    --error:   #721c24; --error-bg: #f8d7da;
+    --warning: #856404; --warning-bg: #fff3cd;
+    --info:    #0c5460; --info-bg:    #d1ecf1;
+  
+    /* Abstände & Radius */
+    --space:   1rem;
+    --radius:  0.5rem;
+  
+    /* Schatten */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  
+  /* ========================
+     Reset & Grundlayout
+     ======================== */
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    display: flex;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  
+  /* ========================
+     Sidebar & Main
+     ======================== */
+  .sidebar {
+    flex: 0 0 250px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space);
+  }
+  
+  .main-content {
+    flex: 1;
+    padding: var(--space) var(--space) calc(var(--space)*2);
+    background: var(--bg);
+    scroll-behavior: smooth;
+  }
+  
+  /* Bei Mobil erst untereinander */
+  @media (max-width: 768px) {
+    body {
+      flex-direction: column;
+    }
+    .sidebar {
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+  }
+  
+  /* ========================
+     Buttons & Interaktionen
+     ======================== */
+  button,
+  input[type="submit"],
+  input[type="button"] {
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--primary);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  button:hover,
+  input[type="submit"]:hover,
+  input[type="button"]:hover {
+    background: var(--primary-alt);
+    box-shadow: var(--shadow-sm);
+  }
+  button:focus,
+  input[type="submit"]:focus,
+  input[type="button"]:focus {
+    outline: 3px solid rgba(78,115,223,0.5);
+    outline-offset: 2px;
+  }
+  
+  /* ========================
+     Formularelemente
+     ======================== */
+  input, select, textarea {
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--primary);
+    box-shadow: var(--shadow-sm);
+    outline: none;
+  }
+  
+  /* ========================
+     Status‑Meldungen
+     ======================== */
+  .status-message {
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+  }
+  .status-success { background: var(--success-bg); color: var(--success); }
+  .status-error   { background: var(--error-bg);   color: var(--error);   }
+  .status-warning { background: var(--warning-bg); color: var(--warning); }
+  .status-info    { background: var(--info-bg);    color: var(--info);    }
+  
+  /* Linke Farbkante */
+  .status-message::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background:
+      var(--success)   /* Default, wird durch bg-Klasse übermalt, aber kein Footprint */
+      no-repeat;
+  }
+  .status-success::before { background-color: var(--success);   }
+  .status-error::before   { background-color: var(--error);     }
+  .status-warning::before { background-color: var(--warning);   }
+  .status-info::before    { background-color: var(--info);      }
+  
+  /* ========================
+     Tabellenmodernisierung
+     ======================== */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    background: var(--surface);
+  }
+  .table th,
+  .table td {
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+  }
+  .table th {
+    background: var(--bg);
+    font-weight: 600;
+    text-align: left;
+  }
+  .table tr:nth-child(even) {
+    background: rgba(0,0,0,0.025);
+  }
+  .table tr:hover {
+    background: rgba(0,0,0,0.05);
+  }
+  
+  /* ========================
+     Editierbare Felder
+     ======================== */
+  .editable {
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .editable:hover {
+    background: rgba(0,0,0,0.04);
+    outline: 1px dashed var(--muted);
+  }
+  
+  /* ========================
+     Code‑ und JSON‑Blöcke
+     ======================== */
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space);
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: var(--shadow-sm);
+  }
+  .code-block {
+    font-family: Menlo, Monaco, monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  
+  /* ========================
+     Form-Layout
+     ======================== */
+  .field-row,
+  .schema-field-row,
+  .custom-field {
+    margin-bottom: 1rem;
+    transition: transform 0.2s;
+  }
+  .field-row:focus-within,
+  .schema-field-row:focus-within,
+  .custom-field:focus-within {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+  }
+  

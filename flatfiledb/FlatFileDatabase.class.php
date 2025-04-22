@@ -289,4 +289,32 @@ class FlatFileDatabase
             throw new RuntimeException("Fehler beim Leeren der Datenbank:\n" . implode("\n", $errorMessages));
         }
     }
+
+    /**
+     * Entfernt eine Tabelle aus der Registrierung.
+     *
+     * @param string $tableName Name der zu entfernenden Tabelle
+     * @return bool True wenn die Tabelle entfernt wurde, false wenn sie nicht existierte
+     */
+    public function unregisterTable(string $tableName): bool
+    {
+        if (!isset($this->tables[$tableName])) {
+            return false; // Tabelle existiert nicht
+        }
+        
+        // Ressourcen freigeben
+        try {
+            $engine = $this->tables[$tableName];
+            $engine->clearCache();
+            
+            // Weitere Ressourcen-Freigabe (falls nötig)
+            // ...
+        } catch (Throwable $e) {
+            error_log("Warnung: Fehler beim Freigeben von Ressourcen für Tabelle '$tableName': " . $e->getMessage());
+        }
+        
+        // Aus der Tabellenliste entfernen
+        unset($this->tables[$tableName]);
+        return true;
+    }
 }

@@ -1,0 +1,70 @@
+[22-Apr-2025 12:50:35 MET] DB '123123' aus Session existiert nicht mehr. Session-Eintrag gelöscht.
+[22-Apr-2025 12:50:35 MET] Keine gültige DB in Session. Suche nach erster verfügbarer DB...
+[22-Apr-2025 12:50:35 MET] Keine Datenbanken im Verzeichnis '/mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data' gefunden.
+[22-Apr-2025 12:50:35 MET] Keine gültige Datenbank ausgewählt oder gefunden. DB-Objekte bleiben null.
+[22-Apr-2025 12:50:51 MET] Keine gültige DB in Session. Suche nach erster verfügbarer DB...
+[22-Apr-2025 12:50:51 MET] Keine Datenbanken im Verzeichnis '/mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data' gefunden.
+[22-Apr-2025 12:50:51 MET] Keine gültige Datenbank ausgewählt oder gefunden. DB-Objekte bleiben null.
+[22-Apr-2025 12:50:51 MET] Keine gültige DB in Session. Suche nach erster verfügbarer DB...
+[22-Apr-2025 12:50:51 MET] Fallback: DB 'datenbank1' als aktiv gesetzt und in Session gespeichert.
+[22-Apr-2025 12:50:51 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:50:51 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:50:51 MET] DB 'datenbank1' aus Session geladen.
+[22-Apr-2025 12:50:51 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:50:51 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:50:51 MET] >>> DEBUG index.php vor include list.php: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:50:51 MET] >>> DEBUG list.php START: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:50:51 MET] >>> DEBUG list.php: Rufe getAllTables auf mit gültigen Objekten.
+[22-Apr-2025 12:50:51 MET] getAllTables: $dbInstance->getTableNames() ergab: Array
+(
+)
+
+[22-Apr-2025 12:50:51 MET] getAllTables: Keine Tabellennamen gefunden, weder über getTableNames() noch über Fallback-Scan.
+[22-Apr-2025 12:50:51 MET] >>> DEBUG list.php: getAllTables zurückgegeben: 0 Tabellen.
+[22-Apr-2025 12:51:09 MET] DB 'datenbank1' aus Session geladen.
+[22-Apr-2025 12:51:09 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:51:09 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:51:13 MET] DB 'datenbank1' aus Session geladen.
+[22-Apr-2025 12:51:13 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:51:13 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:51:13 MET] Table API called with action: create for DB: datenbank1
+[22-Apr-2025 12:51:13 MET] Datendatei '/mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1/tables/test123.json' erfolgreich initialisiert (Bytes: 2).
+[22-Apr-2025 12:51:13 MET] Kein Schema definiert oder keine Schema-Daten empfangen für 'test123'.
+[22-Apr-2025 12:51:13 MET] Metadaten-Datei '/mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1/tables/test123_meta.json' erfolgreich geschrieben (Bytes: 162). Inhalt: {"name":"test123","created":"2025-04-22 12:51:13","columns":[],"required":[],"types":[],"records":0,"auto_increment":1}
+[22-Apr-2025 12:51:13 MET] Tabelle 'test123' erfolgreich bei DB-Instanz registriert.
+[22-Apr-2025 12:51:14 MET] DB 'datenbank1' aus Session geladen.
+[22-Apr-2025 12:51:14 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:51:14 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:51:14 MET] >>> DEBUG index.php vor include list.php: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:51:14 MET] >>> DEBUG list.php START: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:51:14 MET] >>> DEBUG list.php: Rufe getAllTables auf mit gültigen Objekten.
+[22-Apr-2025 12:51:14 MET] getAllTables: $dbInstance->getTableNames() ergab: Array
+(
+)
+
+[22-Apr-2025 12:51:14 MET] getAllTables: Keine Tabellennamen gefunden, weder über getTableNames() noch über Fallback-Scan.
+[22-Apr-2025 12:51:14 MET] >>> DEBUG list.php: getAllTables zurückgegeben: 0 Tabellen.
+[22-Apr-2025 12:51:18 MET] DB 'datenbank1' aus Session geladen.
+[22-Apr-2025 12:51:18 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:51:18 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:51:18 MET] >>> DEBUG index.php vor include list.php: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:51:18 MET] >>> DEBUG list.php START: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:51:18 MET] >>> DEBUG list.php: Rufe getAllTables auf mit gültigen Objekten.
+[22-Apr-2025 12:51:18 MET] getAllTables: $dbInstance->getTableNames() ergab: Array
+(
+)
+
+[22-Apr-2025 12:51:18 MET] getAllTables: Keine Tabellennamen gefunden, weder über getTableNames() noch über Fallback-Scan.
+[22-Apr-2025 12:51:18 MET] >>> DEBUG list.php: getAllTables zurückgegeben: 0 Tabellen.
+[22-Apr-2025 12:51:19 MET] DB 'datenbank1' aus Session geladen.
+[22-Apr-2025 12:51:19 MET] Versuche DB-Initialisierung für: /mnt/web718/e3/35/570602235/htdocs/getfactinfo/test-env/data/datenbank1
+[22-Apr-2025 12:51:19 MET] DB-Objekte erfolgreich für 'datenbank1' initialisiert.
+[22-Apr-2025 12:51:19 MET] >>> DEBUG index.php vor include list.php: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:51:19 MET] >>> DEBUG list.php START: $db type = FlatFileDB\FlatFileDatabase
+[22-Apr-2025 12:51:19 MET] >>> DEBUG list.php: Rufe getAllTables auf mit gültigen Objekten.
+[22-Apr-2025 12:51:19 MET] getAllTables: $dbInstance->getTableNames() ergab: Array
+(
+)
+
+[22-Apr-2025 12:51:19 MET] getAllTables: Keine Tabellennamen gefunden, weder über getTableNames() noch über Fallback-Scan.
+[22-Apr-2025 12:51:19 MET] >>> DEBUG list.php: getAllTables zurückgegeben: 0 Tabellen.

@@ -534,51 +534,99 @@ class FlatFileTableEngine
 
         $usedIndex = false; // Flag for statistics
         $measurement = FlatFileDBStatistics::measurePerformance(function () use ($whereConditions, $limit, $offset, &$usedIndex) {
-            $candidateIds = null;
-            $bestIndexCondition = null;
+            $candidateIds = null; // Wird zur Schnittmenge oder kleinsten Menge
+            $indexConditionsUsed = []; // Bedingungen, die durch Index abgedeckt wurden
             $smallestCandidateSetSize = PHP_INT_MAX;
             $managedFields = $this->indexBuilder->getManagedIndexedFields();
+            $potentialIndexConditions = [];
+            $fallbackToScan = false;
 
-            foreach ($whereConditions as $condition) {
+            // 1. Sammle alle '=' Bedingungen für indizierte Felder
+            foreach ($whereConditions as $index => $condition) {
                 $field = $condition['field'];
                 $operator = trim(strtoupper($condition['operator']));
-                $value = $condition['value'];
                 if ($operator === '=' && in_array($field, $managedFields, true)) {
-                    if (!is_scalar($value) && $value !== null)
+                    if (!is_scalar($condition['value']) && $condition['value'] !== null) {
+                        // Werte, die nicht indiziert werden können, ignorieren für Index-Lookup
                         continue;
-                    try {
-                        $idsFromIndex = $this->indexBuilder->getRecordIdsByFieldValue($field, $value);
-                        $count = count($idsFromIndex);
-                        if ($count < $smallestCandidateSetSize) {
-                            $smallestCandidateSetSize = $count;
-                            $candidateIds = $idsFromIndex;
-                            $bestIndexCondition = $condition;
-                            $usedIndex = true;
-                        }
-                        if ($count === 0)
-                            return []; // Early exit
-                    } catch (Throwable $e) {
-                        error_log("Fehler Index-Suche '$field' Wert '" . (is_scalar($value) ? $value : get_debug_type($value)) . "': " . $e->getMessage() . " - Fallback auf Scan.");
-                        $candidateIds = null;
-                        $usedIndex = false;
-                        break;
                     }
+                    $potentialIndexConditions[$index] = $condition;
                 }
             }
+
+            // 2. Hole IDs für jede potenzielle Index-Bedingung und bilde Schnittmenge
+            if (!empty($potentialIndexConditions)) {
+                $usedIndex = true; // Markieren, dass Index versucht wurde
+                foreach ($potentialIndexConditions as $index => $condition) {
+                    $field = $condition['field'];
+                    $value = $condition['value'];
+                    try {
+                        $idsFromIndex = $this->indexBuilder->getRecordIdsByFieldValue($field, $value);
+
+                        if ($idsFromIndex === null || $idsFromIndex === []) {
+                             // Wenn ein Index-Lookup eine leere Menge ergibt, ist das Gesamtergebnis leer.
+                            return []; // Early exit
+                        }
+
+                        if ($candidateIds === null) {
+                            // Erste ID-Menge
+                            $candidateIds = array_flip($idsFromIndex); // array_flip für effiziente Schnittmengenbildung
+                        } else {
+                            // Bilde Schnittmenge mit bisherigen Kandidaten
+                            $candidateIds = array_intersect_key($candidateIds, array_flip($idsFromIndex));
+                        }
+
+                        // Wenn Schnittmenge leer ist, können wir aufhören
+                        if (empty($candidateIds)) {
+                            return []; // Early exit
+                        }
+
+                        $indexConditionsUsed[$index] = $condition; // Merken, welche Bedingung genutzt wurde
+
+                    } catch (Throwable $e) {
+                        error_log("Fehler Index-Suche für Bedingung " . print_r($condition, true) . ": " . $e->getMessage() . " - Fallback auf Scan.");
+                        $candidateIds = null; // Index kann nicht zuverlässig genutzt werden
+                        $indexConditionsUsed = []; // Verwerfe genutzte Bedingungen
+                        $usedIndex = false;
+                        $fallbackToScan = true;
+                        break; // Breche Index-Verarbeitung ab
+                    }
+                }
+                 // Konvertiere zurück zu einer Liste von IDs, falls nicht leer
+                 if ($candidateIds !== null) {
+                    $candidateIds = array_keys($candidateIds);
+                 }
+
+            } else {
+                 $usedIndex = false; // Kein passender Index gefunden
+            }
+
             $results = [];
             $count = 0;
             $skipped = 0;
-            $sourceIds = $candidateIds ?? $this->indexBuilder->getAllKeys();
-            if (empty($sourceIds))
-                return [];
+            // 3. Bestimme Quell-IDs: Index-Ergebnis oder alle Schlüssel (bei Fallback oder keinem Index)
+            $sourceIds = $candidateIds ?? ($fallbackToScan ? $this->indexBuilder->getAllKeys() : $this->indexBuilder->getAllKeys());
+            // Optimierung: Wenn candidateIds !== null, aber leer ist, können wir hier schon raus. (Oben schon abgedeckt)
+             if (empty($sourceIds)) {
+                 return [];
+             }
+
+            // 4. Filtere die verbleibenden Bedingungen
+            $conditionsToApply = $whereConditions;
+            if (!empty($indexConditionsUsed)) {
+                // Entferne die Bedingungen, die bereits durch den Index abgedeckt wurden
+                $conditionsToApply = array_diff_key($whereConditions, $indexConditionsUsed);
+            }
+
 
             foreach ($sourceIds as $recordId) {
-                if (!is_int($recordId) || $recordId <= 0)
-                    continue;
+                if (!is_int($recordId) || $recordId <= 0) continue; // Sicherheitscheck
+
+                // Lese Datensatz (nutzt Cache)
                 $record = $this->selectRecord($recordId);
-                if ($record === null)
-                    continue;
-                $conditionsToApply = ($usedIndex && $bestIndexCondition !== null) ? array_filter($whereConditions, fn($c) => $c !== $bestIndexCondition) : $whereConditions;
+                if ($record === null) continue; // Datensatz nicht gefunden oder inkonsistent
+
+                // Wende verbleibende Filter an
                 if ($this->recordMatchesConditions($record, $conditionsToApply)) {
                     if ($offset > 0 && $skipped < $offset) {
                         $skipped++;
@@ -586,8 +634,9 @@ class FlatFileTableEngine
                     }
                     $results[] = $record;
                     $count++;
-                    if ($limit > 0 && $count >= $limit)
-                        break;
+                    if ($limit > 0 && $count >= $limit) {
+                        break; // Limit erreicht
+                    }
                 }
             }
             return $results;
@@ -1250,5 +1299,115 @@ class FlatFileTableEngine
             error_log("Fehler Abrufen Datensatzanzahl {$this->config->getDataFile()}: " . $e->getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Zählt Datensätze effizienter als findRecords + count().
+     * Versucht, Indizes zu nutzen, bevor auf Scan zurückgegriffen wird.
+     * Ignoriert Limit/Offset.
+     *
+     * @param array $whereConditions [['field'=>..., 'operator'=>..., 'value'=>...], ...]
+     * @return int Anzahl der passenden Datensätze.
+     * @throws InvalidArgumentException Wenn Bedingungen ungültig sind.
+     * @throws RuntimeException Bei Index- oder Dateizugriffsfehlern.
+     */
+    public function countRecords(array $whereConditions): int
+    {
+        // 1. Validierung der Bedingungen (grob)
+        foreach ($whereConditions as $index => $condition) {
+            if (!is_array($condition) || !isset($condition['field']) || !is_string($condition['field']) || trim($condition['field']) === '' || !isset($condition['operator']) || !is_string($condition['operator']) || trim($condition['operator']) === '' || !array_key_exists('value', $condition)) {
+                throw new InvalidArgumentException("Ungültige Bedingungsstruktur bei Index $index für countRecords.");
+            }
+        }
+
+        // 2. Keine Bedingungen: Direkte Zählung über Primärindex
+        if (empty($whereConditions)) {
+            try {
+                return $this->indexBuilder->count();
+            } catch (Throwable $e) {
+                error_log("Fehler beim Zählen aller Datensätze über Index: " . $e->getMessage());
+                // Fallback auf Scan? Sicherer ist hier vielleicht, den Fehler weiterzugeben.
+                throw new RuntimeException("Fehler beim Zählen über Index: " . $e->getMessage(), 0, $e);
+            }
+        }
+
+        // 3. Versuche Index-Optimierung für '=' Bedingungen
+        $candidateIds = null;
+        $indexConditionsUsed = [];
+        $managedFields = $this->indexBuilder->getManagedIndexedFields();
+        $potentialIndexConditions = [];
+        $fallbackToScan = false;
+
+        foreach ($whereConditions as $index => $condition) {
+            $field = $condition['field'];
+            $operator = trim(strtoupper($condition['operator']));
+            if ($operator === '=' && in_array($field, $managedFields, true)) {
+                if (!is_scalar($condition['value']) && $condition['value'] !== null) {
+                    continue;
+                }
+                $potentialIndexConditions[$index] = $condition;
+            }
+        }
+
+        if (!empty($potentialIndexConditions)) {
+            foreach ($potentialIndexConditions as $index => $condition) {
+                $field = $condition['field'];
+                $value = $condition['value'];
+                try {
+                    $idsFromIndex = $this->indexBuilder->getRecordIdsByFieldValue($field, $value);
+                    if ($idsFromIndex === null || $idsFromIndex === []) {
+                        return 0; // Early exit: Leere Menge
+                    }
+                    if ($candidateIds === null) {
+                        $candidateIds = array_flip($idsFromIndex);
+                    } else {
+                        $candidateIds = array_intersect_key($candidateIds, array_flip($idsFromIndex));
+                    }
+                    if (empty($candidateIds)) {
+                        return 0; // Early exit: Leere Schnittmenge
+                    }
+                    $indexConditionsUsed[$index] = $condition;
+                } catch (Throwable $e) {
+                    error_log("Fehler Index-Suche (für count) für Bedingung " . print_r($condition, true) . ": " . $e->getMessage() . " - Fallback auf Scan.");
+                    $candidateIds = null;
+                    $indexConditionsUsed = [];
+                    $fallbackToScan = true;
+                    break;
+                }
+            }
+            if ($candidateIds !== null) {
+                $candidateIds = array_keys($candidateIds);
+            }
+        }
+
+        // 4. Wenn *alle* Bedingungen durch Index abgedeckt wurden:
+        $conditionsToApply = $whereConditions;
+        if (!empty($indexConditionsUsed)) {
+            $conditionsToApply = array_diff_key($whereConditions, $indexConditionsUsed);
+        }
+
+        if ($candidateIds !== null && empty($conditionsToApply)) {
+            // Alle Bedingungen wurden durch den Index abgedeckt
+            return count($candidateIds);
+        }
+
+        // 5. Fallback auf Scan (entweder über Kandidaten-IDs oder alle IDs)
+        $count = 0;
+        $sourceIds = $candidateIds ?? ($fallbackToScan ? $this->indexBuilder->getAllKeys() : $this->indexBuilder->getAllKeys());
+        if (empty($sourceIds)) {
+            return 0;
+        }
+
+        // Hier *müssen* wir die Datensätze lesen, um die verbleibenden Filter anzuwenden
+        foreach ($sourceIds as $recordId) {
+            if (!is_int($recordId) || $recordId <= 0) continue;
+            $record = $this->selectRecord($recordId); // Nutzt Cache
+            if ($record === null) continue;
+            if ($this->recordMatchesConditions($record, $conditionsToApply)) {
+                $count++;
+            }
+        }
+
+        return $count;
     }
 }

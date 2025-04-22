@@ -45,37 +45,36 @@ class FlatFileFileManager
         $dataFile = $this->config->getDataFile();
         $dataDir = dirname($dataFile);
 
-        // Ensure directory exists and is writable
+        // Ensure directory exists
         if (!is_dir($dataDir)) {
-            if (!@mkdir($dataDir, FlatFileDBConstants::DEFAULT_DIR_PERMISSIONS, true)) {
-                if (!is_dir($dataDir)) {
-                    $error = error_get_last();
-                    $errorMsg = $error ? " ({$error['message']})" : "";
-                    throw new RuntimeException("Daten-Verzeichnis '$dataDir' konnte nicht erstellt werden{$errorMsg}.");
-                }
+            // Try to create it recursively
+            if (!@mkdir($dataDir, FlatFileDBConstants::DEFAULT_DIR_PERMISSIONS, true) && !is_dir($dataDir)) {
+                // Check is_dir again in case of race condition where mkdir failed but it exists now
+                $error = error_get_last();
+                $errorMsg = $error ? " ({$error['message']})" : "";
+                throw new RuntimeException("Daten-Verzeichnis '$dataDir' konnte nicht erstellt werden{$errorMsg}.");
             }
         }
-        // Check writability after ensuring existence
+        // Ensure directory is writable (check happens after trying to create it)
         if (!is_writable($dataDir)) {
             throw new RuntimeException("Daten-Verzeichnis '$dataDir' ist nicht beschreibbar.");
         }
 
-        // Ensure data file exists and is writable
+        // Ensure data file exists
         if (!file_exists($dataFile)) {
-            // Use file_put_contents for atomic creation/locking if possible
-            if (@file_put_contents($dataFile, '', LOCK_EX) === false) {
-                if (!file_exists($dataFile)) { // Check again after attempt
-                    $error = error_get_last();
-                    $errorMsg = $error ? " ({$error['message']})" : "";
-                    throw new RuntimeException("Datendatei '$dataFile' konnte nicht erstellt werden{$errorMsg}.");
-                }
-                // If file exists now, check writability again
-                if (!is_writable($dataFile)) {
-                    throw new RuntimeException("Datendatei '$dataFile' ist nicht beschreibbar (nach Erstellversuch).");
-                }
+            // Try to create it atomically (file_put_contents with LOCK_EX)
+            // Check file_exists again in case of race conditions where file_put_contents fails but the file was created concurrently.
+            if (@file_put_contents($dataFile, '', LOCK_EX) === false && !file_exists($dataFile)) {
+                $error = error_get_last();
+                $errorMsg = $error ? " ({$error['message']})" : "";
+                throw new RuntimeException("Datendatei '$dataFile' konnte nicht erstellt werden{$errorMsg}.");
             }
-        } elseif (!is_writable($dataFile)) {
-            // File exists but is not writable
+        }
+
+        // Ensure data file is writable (check happens after ensuring/attempting creation)
+        // This covers cases: file existed but wasn't writable, or creation succeeded but file isn't writable (permissions).
+        clearstatcache(true, $dataFile); // Ensure is_writable uses fresh stats after potential creation
+        if (!is_writable($dataFile)) {
             throw new RuntimeException("Datendatei '$dataFile' ist nicht beschreibbar.");
         }
     }

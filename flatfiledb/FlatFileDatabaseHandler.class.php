@@ -435,8 +435,7 @@ class FlatFileDatabaseHandler
 
     /**
      * Zählt die Anzahl der Datensätze, die die `where`-Bedingungen erfüllen.
-     * ACHTUNG: Lädt potenziell alle passenden Datensätze in den Speicher, nur um sie zu zählen!
-     * Dies kann bei sehr vielen Treffern ineffizient sein.
+     * Nutzt eine optimierte Zählmethode in der Engine, die Indizes bevorzugt.
      * Ignoriert `limit`, `offset`, `orderBy` und `select` des Handlers.
      *
      * @return int Die Anzahl der passenden Datensätze.
@@ -448,13 +447,19 @@ class FlatFileDatabaseHandler
         $this->ensureTableSelected();
         $engine = $this->db->table($this->tableName);
 
-        // Führe findRecords ohne Limit/Offset aus, um alle Treffer zu bekommen
-        // Wir brauchen keine Sortierung oder Feldauswahl zum Zählen.
-        $records = $engine->findRecords($this->conditions, 0, 0);
+        try {
+            // Rufe die optimierte countRecords-Methode der Engine auf
+            $count = $engine->countRecords($this->conditions);
+        } catch (Throwable $e) {
+            // Fange Fehler von countRecords ab und werfe sie weiter
+            $this->resetState(); // Zustand trotzdem zurücksetzen
+            if ($e instanceof RuntimeException || $e instanceof InvalidArgumentException) {
+                throw $e;
+            }
+            throw new RuntimeException("Fehler beim Zählen der Datensätze in Tabelle '{$this->tableName}': " . $e->getMessage(), 0, $e);
+        }
 
-        // Der Zustand muss hier zurückgesetzt werden, da count() eine Endoperation ist.
-        $count = count($records);
-        $this->resetState();
+        $this->resetState(); // Zustand zurücksetzen
         return $count;
     }
 
@@ -545,5 +550,329 @@ class FlatFileDatabaseHandler
         $this->offset       = 0;
         $this->orderBy      = null;
         $this->selectFields = []; // Leeres Array bedeutet 'alle Felder'
+    }
+
+    /**
+     * Löscht eine Tabelle vollständig aus der Datenbank.
+     * Entfernt alle Dateien und Verweise auf die Tabelle.
+     *
+     * @param string $tableName Der Name der zu löschenden Tabelle
+     * @return bool True wenn erfolgreich, sonst false
+     * @throws RuntimeException Wenn die Tabelle nicht existiert oder ein fataler Fehler auftritt
+     */
+    public function dropTable(string $tableName): bool
+    {
+        $this->ensureTableSelected();
+        
+        // Prüfen, ob die zu löschende Tabelle die aktuell ausgewählte ist
+        if ($this->tableName !== $tableName) {
+            throw new RuntimeException("Die zu löschende Tabelle '$tableName' muss zuerst mit table() ausgewählt werden.");
+        }
+
+        if (!$this->db->hasTable($tableName)) {
+            throw new RuntimeException("Tabelle '$tableName' existiert nicht und kann nicht gelöscht werden.");
+        }
+
+        try {
+            // Tabellen-Engine holen
+            $engine = $this->db->table($tableName);
+            
+            // Zuerst Tabelle leeren, um alle Datensätze zu entfernen
+            $engine->clearTable();
+            
+            // Nun die Tabellendateien physisch löschen
+            // Hierfür benötigen wir die Konfigurationspfade
+            $config = $engine->getConfig();
+            $filesToDelete = [
+                $config->getDataFile(),
+                $config->getIndexFile(),
+                $config->getLogFile()
+            ];
+            
+            // Sekundäre Indizes finden und zum Löschen markieren
+            $indexBuilder = $engine->getIndexBuilder();
+            foreach ($indexBuilder->getManagedIndexedFields() as $fieldName) {
+                try {
+                    $indexFile = $indexBuilder->getSecondaryIndexFilePath($fieldName);
+                    $filesToDelete[] = $indexFile;
+                } catch (Throwable $e) {
+                    error_log("Warnung: Konnte Pfad des Sekundärindex '$fieldName' für Tabelle '$tableName' nicht ermitteln: " . $e->getMessage());
+                }
+            }
+            
+            // ID-Lock-Datei auch löschen
+            $filesToDelete[] = $indexBuilder->getIdLockFilePath();
+            
+            // Alle Dateien löschen
+            $deleteErrors = [];
+            foreach ($filesToDelete as $filePath) {
+                if (file_exists($filePath)) {
+                    if (!@unlink($filePath)) {
+                        $error = error_get_last();
+                        $errorMsg = $error ? " ({$error['message']})" : "";
+                        $deleteErrors[] = "Konnte Datei '$filePath' nicht löschen{$errorMsg}";
+                    }
+                }
+            }
+            
+            // Wenn es Fehler beim Löschen gab, Warnung loggen aber fortfahren
+            if (!empty($deleteErrors)) {
+                foreach ($deleteErrors as $error) {
+                    error_log("Warnung beim Löschen der Tabelle '$tableName': $error");
+                }
+            }
+            
+            // Zum Schluss Tabellenverweise aus der Datenbank entfernen
+            // Dies erfordert eine interne Methode in der FlatFileDatabase-Klasse, die wir aufrufen müssten
+
+            // Zustand zurücksetzen
+            $this->db->unregisterTable($tableName);
+            $this->resetState();
+            
+            return true;
+        } catch (Throwable $e) {
+            // Aufgetretene Fehler loggen und weiterwerfen
+            error_log("Fehler beim Löschen der Tabelle '$tableName': " . $e->getMessage());
+            throw new RuntimeException("Fehler beim Löschen der Tabelle '$tableName': " . $e->getMessage(), 0, $e);
+        }
+    }
+    
+    /**
+     * Findet einen einzelnen Datensatz anhand seiner ID.
+     * Ignoriert vorherige `where`-Bedingungen, `limit`, `offset`, `orderBy`, `select`.
+     *
+     * @param int $id Die ID des zu suchenden Datensatzes.
+     * @return array<string, mixed>|null Der gefundene Datensatz oder null.
+     * @throws RuntimeException Wenn die Tabelle nicht ausgewählt oder die Engine einen Fehler hat.
+     * @throws InvalidArgumentException Wenn die ID ungültig ist.
+     */
+    public function findById(int $id): ?array
+    {
+        $this->ensureTableSelected();
+
+        if (!FlatFileValidator::isValidId($id)) {
+            // ID ist ungültig, kann nicht existieren
+            $this->resetState();
+            return null;
+        }
+
+        $engine = $this->db->table($this->tableName);
+
+        try {
+            // Rufe direkt die selectRecord-Methode der Engine auf
+            $record = $engine->selectRecord($id);
+        } catch (Throwable $e) {
+            // Fange Fehler von selectRecord ab und werfe sie weiter
+            $this->resetState(); // Zustand trotzdem zurücksetzen
+            if ($e instanceof RuntimeException || $e instanceof InvalidArgumentException) {
+                throw $e;
+            }
+            throw new RuntimeException("Fehler beim Suchen des Datensatzes mit ID {$id} in Tabelle '{$this->tableName}': " . $e->getMessage(), 0, $e);
+        }
+
+        $this->resetState(); // Zustand zurücksetzen
+        return $record;
+    }
+
+    /**
+     * Erhöht den Wert eines numerischen Feldes für alle Datensätze,
+     * die den aktuellen `where`-Bedingungen entsprechen.
+     *
+     * @param string $field Der Name des zu erhöhenden Feldes.
+     * @param int|float $amount Der Betrag, um den erhöht werden soll (Standard: 1). Muss positiv sein.
+     * @return bool True, wenn mindestens ein Datensatz erfolgreich aktualisiert wurde, sonst false.
+     * @throws RuntimeException Wenn Tabelle nicht ausgewählt, Feld nicht numerisch im Datensatz oder bei Engine-Fehlern.
+     * @throws InvalidArgumentException Wenn Feldname leer ist oder Amount nicht positiv ist.
+     */
+    public function increment(string $field, int|float $amount = 1): bool
+    {
+        return $this->performIncrementOrDecrement($field, $amount, 'increment');
+    }
+
+    /**
+     * Verringert den Wert eines numerischen Feldes für alle Datensätze,
+     * die den aktuellen `where`-Bedingungen entsprechen.
+     *
+     * @param string $field Der Name des zu verringernden Feldes.
+     * @param int|float $amount Der Betrag, um den verringert werden soll (Standard: 1). Muss positiv sein.
+     * @return bool True, wenn mindestens ein Datensatz erfolgreich aktualisiert wurde, sonst false.
+     * @throws RuntimeException Wenn Tabelle nicht ausgewählt, Feld nicht numerisch im Datensatz oder bei Engine-Fehlern.
+     * @throws InvalidArgumentException Wenn Feldname leer ist oder Amount nicht positiv ist.
+     */
+    public function decrement(string $field, int|float $amount = 1): bool
+    {
+        return $this->performIncrementOrDecrement($field, $amount, 'decrement');
+    }
+
+    /**
+     * Interne Hilfsmethode für increment/decrement.
+     */
+    private function performIncrementOrDecrement(string $field, int|float $amount, string $operation): bool
+    {
+        $trimmedField = trim($field);
+        if ($trimmedField === '') {
+            throw new InvalidArgumentException("Feldname für '$operation' darf nicht leer sein.");
+        }
+        if ($amount <= 0) {
+            throw new InvalidArgumentException("Betrag für '$operation' muss positiv sein.");
+        }
+
+        $this->ensureTableSelected();
+        $engine = $this->db->table($this->tableName);
+
+        // 1. Finde betroffene Datensätze (ohne Limit/Offset des Handlers!)
+        $records = $engine->findRecords($this->conditions, 0, 0); // Finde *alle* passenden
+
+        if (empty($records)) {
+            $this->resetState();
+            return false; // Nichts zu aktualisieren
+        }
+
+        $updates = [];
+        foreach ($records as $record) {
+            if (!isset($record[$trimmedField])) {
+                // Feld existiert nicht, kann nicht geändert werden (oder als 0 behandeln?)
+                // Fürs Erste: Überspringen und eventuell loggen
+                error_log("Warnung: Feld '{$trimmedField}' nicht in Datensatz ID {$record['id']} gefunden während {$operation}.");
+                continue;
+            }
+            if (!is_numeric($record[$trimmedField])) {
+                // Feld ist nicht numerisch, Fehler
+                $this->resetState(); // Zustand zurücksetzen bevor Exception geworfen wird
+                throw new RuntimeException("Feld '{$trimmedField}' in Datensatz ID {$record['id']} ist nicht numerisch und kann nicht für '{$operation}' verwendet werden.");
+            }
+
+            // Berechne neuen Wert
+            $newValue = ($operation === 'increment')
+                ? $record[$trimmedField] + $amount
+                : $record[$trimmedField] - $amount;
+
+            // Bereite Daten für Bulk-Update vor (nur das geänderte Feld)
+            $updates[] = [
+                'recordId' => $record['id'],
+                'newData' => [$trimmedField => $newValue] // Nur das geänderte Feld übergeben
+            ];
+        }
+
+        if (empty($updates)) {
+            $this->resetState();
+            return false; // Keine gültigen Datensätze zum Aktualisieren gefunden
+        }
+
+        $success = false;
+        try {
+            // Führe Bulk-Update aus
+            $bulkResult = $engine->bulkUpdateRecords($updates);
+            // Prüfe, ob *mindestens ein* Update erfolgreich war oder keine Änderung nötig war
+            $success = $this->processBulkUpdateResult($bulkResult);
+        } catch (Throwable $e) {
+            // Fange Fehler von bulkUpdateRecords ab und werfe sie weiter
+            $this->resetState(); // Zustand trotzdem zurücksetzen
+            throw $e;
+        }
+
+        $this->resetState();
+        return $success;
+    }
+
+    /**
+     * Erstellt einen sekundären Index für das angegebene Feld.
+     * Baut den Index neu auf, falls er bereits existiert.
+     * Dies ist ein Shortcut zur Methode in FlatFileTableEngine.
+     * ACHTUNG: Kann bei großen Tabellen lange dauern!
+     *
+     * @param string $fieldName Der Name des Feldes, das indiziert werden soll.
+     * @return self Fluent Interface.
+     * @throws RuntimeException Wenn Tabelle nicht ausgewählt oder Index-Erstellung fehlschlägt.
+     * @throws InvalidArgumentException Wenn der Feldname ungültig ist.
+     */
+    public function createIndex(string $fieldName): self
+    {
+        $this->ensureTableSelected();
+        $engine = $this->db->table($this->tableName);
+        try {
+            $engine->createIndex($fieldName);
+        } catch (Throwable $e) {
+            // Zustand nicht zurücksetzen, da dies eine Verwaltungsoperation ist
+            if ($e instanceof RuntimeException || $e instanceof InvalidArgumentException) {
+                throw $e;
+            }
+            throw new RuntimeException("Fehler beim Erstellen des Index für Feld '{$fieldName}' in Tabelle '{$this->tableName}': " . $e->getMessage(), 0, $e);
+        }
+        // Gib self zurück, um Chaining zu ermöglichen, obwohl nach Index-Operationen meist Schluss ist.
+        return $this;
+    }
+
+    /**
+     * Löscht einen sekundären Index für das angegebene Feld.
+     * Dies ist ein Shortcut zur Methode in FlatFileTableEngine.
+     *
+     * @param string $fieldName Der Name des zu löschenden Index-Feldes.
+     * @return self Fluent Interface.
+     * @throws RuntimeException Wenn Tabelle nicht ausgewählt oder Index-Löschung fehlschlägt.
+     * @throws InvalidArgumentException Wenn der Feldname ungültig ist.
+     */
+    public function dropIndex(string $fieldName): self
+    {
+        $this->ensureTableSelected();
+        $engine = $this->db->table($this->tableName);
+        try {
+            $engine->dropIndex($fieldName);
+        } catch (Throwable $e) {
+            // Zustand nicht zurücksetzen
+            if ($e instanceof RuntimeException || $e instanceof InvalidArgumentException) {
+                throw $e;
+            }
+            throw new RuntimeException("Fehler beim Löschen des Index für Feld '{$fieldName}' in Tabelle '{$this->tableName}': " . $e->getMessage(), 0, $e);
+        }
+        return $this;
+    }
+
+    /**
+     * Definiert ein Schema für die Validierung von Daten bei Insert/Update.
+     * Dies ist ein Shortcut zur Methode in FlatFileTableEngine.
+     *
+     * @param list<string> $requiredFields Liste der Pflichtfelder.
+     * @param array<string, string> $fieldTypes Map von Feldnamen zu erwarteten Typen (z.B. 'string', 'int', '?bool').
+     * @return self Fluent Interface.
+     * @throws RuntimeException Wenn Tabelle nicht ausgewählt.
+     * @throws InvalidArgumentException Bei ungültigen Schema-Definitionen.
+     */
+    public function setSchema(array $requiredFields = [], array $fieldTypes = []): self
+    {
+        $this->ensureTableSelected();
+        $engine = $this->db->table($this->tableName);
+        try {
+            $engine->setSchema($requiredFields, $fieldTypes);
+        } catch (InvalidArgumentException $e) {
+            // Zustand nicht zurücksetzen
+            throw $e;
+        }
+        return $this;
+    }
+
+    /**
+     * Ruft das aktuell definierte Schema für die Tabelle ab.
+     * Dies ist ein Shortcut zur Methode in FlatFileTableEngine (fehlt dort, müsste ergänzt werden).
+     *
+     * @return array{requiredFields?: list<string>, fieldTypes?: array<string, string>} Das definierte Schema.
+     * @throws RuntimeException Wenn Tabelle nicht ausgewählt.
+     */
+    public function getSchema(): array
+    {
+        $this->ensureTableSelected();
+        $engine = $this->db->table($this->tableName);
+        // Annahme: Es gibt eine getSchema()-Methode in der Engine
+        // Diese müsste in FlatFileTableEngine.php hinzugefügt werden:
+        // public function getSchema(): array { return $this->schema; }
+        if (method_exists($engine, 'getSchema')) {
+            return $engine->getSchema();
+        } else {
+            // Fallback oder Fehler, falls die Methode (noch) nicht existiert
+            // throw new RuntimeException("getSchema Methode nicht in FlatFileTableEngine implementiert.");
+            // Vorerst leeres Array zurückgeben, um Kompatibilität zu wahren
+            return [];
+        }
+        // Kein resetState(), da dies eine reine Leseoperation ist.
     }
 }
