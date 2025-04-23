@@ -76,9 +76,6 @@
     </nav>
 </header>
 
-<!-- Status-Meldungen -->
-<div id="statusMessages" class="container-fluid mb-3"></div>
-
 <!-- Modal für neue Datenbank -->
 <div class="modal fade" id="newDatabaseModal" tabindex="-1" aria-labelledby="newDatabaseModalLabel" aria-hidden="true">
     <div class="modal-dialog">

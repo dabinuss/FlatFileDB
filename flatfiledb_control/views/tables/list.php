@@ -17,7 +17,7 @@ if (!isset($db) || !isset($stats) || !isset($handler)) {
 
 <div class="card">
     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <h4 class="mb-0">Verfügbare Tabellen (<?php echo htmlspecialchars($GLOBALS['currentDb'] ?? 'Keine DB'); ?>)</h4>
+        <h4 class="mb-0"><i class="bi bi-table bi-background-icon"></i> Verfügbare Tabellen (<?php echo htmlspecialchars($GLOBALS['currentDb'] ?? 'Keine DB'); ?>)</h4>
         <!-- DB-Namen anzeigen -->
         <!-- Button zum Erstellen ist jetzt in der Sidebar -->
         <!-- <a href="index.php?tab=tables&action=create" class="btn btn-light btn-sm">

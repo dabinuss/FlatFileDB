@@ -162,7 +162,7 @@ body {
 
 /* Etwas Abstand zwischen Sidebar und Hauptinhalt (optional) */
 .sidebar {
-    padding-right: 20px;
+    padding: 10px;
     /* Beispiel */
     background-color: var(--bs-light);
     /* Sidebar Hintergrund */
@@ -375,3 +375,42 @@ pre {
 }
 
 /* .navbar-brand, .navbar-nav .nav-link { ... } */
+
+.bi-background-icon::before {
+    font-size: 48px;
+    position: absolute;
+    left: 0.5rem;
+    top: 0.5rem;
+    opacity: 0.1;
+    transform: rotate(0.015turn);
+}
+
+.card-header {
+    position: relative;
+    overflow: hidden;
+}
+
+.card-header h4{
+    text-shadow: 0 0 1px rgba(0,0,0,0.2),
+    0 0 2px rgba(0,0,0,0.2),
+    0 0 5px rgba(0,0,0,0.2);
+}
+
+.list-group-item.list-group-item-action.active {
+    font-style: italic;
+}
+
+i.bi.bi-right-side {
+    position: absolute;
+    right:1rem;
+}
+
+header.mb-4 {
+    margin-bottom: 0 !important;
+}
+
+.container-fluid .row {
+    margin-top: 0;
+    margin-right: 0;
+    margin-left: 0;
+}
