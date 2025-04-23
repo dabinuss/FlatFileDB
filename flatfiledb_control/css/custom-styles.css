@@ -1,0 +1,377 @@
+/* custom-styles.css - Overrides für Bootstrap 5 */
+
+/* ========================================
+   1. Globale Variablen überschreiben
+   ======================================== */
+:root {
+    /* Farbpalette */
+    --bs-primary: #34568B;
+    /* Ein gedämpfter Blauton */
+    --bs-primary-rgb: 52, 86, 139;
+    --bs-secondary: #6c757d;
+    /* Standard Bootstrap Grau */
+    --bs-secondary-rgb: 108, 117, 125;
+    --bs-success: #198754;
+    /* Standard Bootstrap Grün */
+    --bs-success-rgb: 25, 135, 84;
+    --bs-info: #0dcaf0;
+    /* Standard Bootstrap Türkis/Cyan */
+    --bs-info-rgb: 13, 202, 240;
+    --bs-warning: #ffc107;
+    /* Standard Bootstrap Gelb */
+    --bs-warning-rgb: 255, 193, 7;
+    --bs-danger: #dc3545;
+    /* Standard Bootstrap Rot */
+    --bs-danger-rgb: 220, 53, 69;
+    --bs-light: #f8f9fa;
+    /* Standard Bootstrap Hellgrau */
+    --bs-light-rgb: 248, 249, 250;
+    --bs-dark: #212529;
+    /* Standard Bootstrap Dunkelgrau */
+    --bs-dark-rgb: 33, 37, 41;
+
+    /* Körper & Text Farben */
+    --bs-body-color: #333;
+    /* Etwas dunklerer Text für besseren Kontrast */
+    --bs-body-bg: #ffffff;
+    /* Reines Weiß als Hintergrund */
+    --bs-secondary-color: rgba(51, 51, 51, 0.75);
+    /* Angepasste Sekundärfarbe für Text */
+    --bs-secondary-bg: #e9ecef;
+    /* Angepasster Sekundärhintergrund */
+
+    /* Ränder */
+    --bs-border-color: #dee2e6;
+    /* Standard-Randfarbe */
+    --bs-border-color-translucent: rgba(0, 0, 0, 0.1);
+    /* Leichter transluzenter Rand */
+    --bs-border-radius: 0.25rem;
+    /* Deutlich reduzierte Rundung */
+    --bs-border-radius-sm: 0.2rem;
+    /* Kleinere Rundung */
+    --bs-border-radius-lg: 0.3rem;
+    /* Größere Rundung */
+    --bs-border-radius-pill: 2rem;
+    /* Pillen-Rundung beibehalten oder anpassen */
+
+    /* Schriftart (Standard Bootstrap beibehalten, gut für Systemkompatibilität) */
+    /* --bs-body-font-family: ...; */
+    --bs-body-font-size: 0.95rem;
+    /* Leicht kleiner für Kompaktheit */
+    --bs-body-font-weight: 400;
+    --bs-body-line-height: 1.5;
+    /* Etwas geringere Zeilenhöhe */
+
+    /* Schatten */
+    --bs-box-shadow-sm: 0 0.1rem 0.25rem rgba(0, 0, 0, 0.06);
+    /* Subtilerer Schatten */
+    --bs-box-shadow: 0 0.3rem 0.7rem rgba(0, 0, 0, 0.08);
+    --bs-box-shadow-lg: 0 0.6rem 1.5rem rgba(0, 0, 0, 0.1);
+
+    /* Links */
+    --bs-link-decoration: none;
+    /* Keine Unterstreichung standardmäßig */
+    --bs-link-hover-decoration: underline;
+    /* Unterstreichung nur bei Hover */
+
+    /* Buttons - Kompakter */
+    --bs-btn-padding-y: 0.3rem;
+    --bs-btn-padding-x: 0.8rem;
+    --bs-btn-font-size: 0.9rem;
+    --bs-btn-padding-y-sm: 0.2rem;
+    --bs-btn-padding-x-sm: 0.6rem;
+    --bs-btn-font-size-sm: 0.8rem;
+    --bs-btn-border-width: 1px;
+    /* Dünnere Ränder */
+    --bs-btn-box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 1px rgba(0, 0, 0, 0.06);
+    /* Subtiler 3D-Effekt */
+    --bs-btn-focus-box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+    /* Leichter Fokusring */
+    --bs-btn-active-box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.1);
+
+    /* Formulare - Kompakter */
+    --bs-form-control-padding-y: 0.35rem;
+    --bs-form-control-padding-x: 0.75rem;
+    --bs-form-control-font-size: 0.9rem;
+    --bs-form-label-font-weight: 500;
+    /* Labels etwas fetter */
+
+    /* Tabellen - Kompakter */
+    --bs-table-cell-padding-y: 0.4rem;
+    --bs-table-cell-padding-x: 0.6rem;
+    --bs-table-color: var(--bs-body-color);
+    --bs-table-bg: transparent;
+    --bs-table-accent-bg: rgba(0, 0, 0, 0.03);
+    /* Leichter Zebra-Streifen */
+    --bs-table-hover-color: var(--bs-body-color);
+    --bs-table-hover-bg: rgba(var(--bs-primary-rgb), 0.07);
+    /* Leichter Hover-Effekt in Primärfarbe */
+    --bs-table-border-color: var(--bs-border-color);
+    --bs-table-header-color: var(--bs-dark);
+    /* Dunklere Header */
+    --bs-table-header-bg: var(--bs-light);
+    /* Heller Hintergrund für Header */
+
+    /* Cards - Kompakter */
+    --bs-card-spacer-y: 0.8rem;
+    --bs-card-spacer-x: 1rem;
+    --bs-card-cap-padding-y: 0.6rem;
+    --bs-card-cap-padding-x: 1rem;
+    --bs-card-cap-bg: rgba(0, 0, 0, 0.02);
+    /* Sehr leichter Header-Hintergrund */
+    --bs-card-border-color: var(--bs-border-color);
+    --bs-card-border-radius: var(--bs-border-radius);
+    --bs-card-box-shadow: var(--bs-box-shadow-sm);
+
+    /* Modals */
+    --bs-modal-inner-padding: 1rem;
+    /* Innenabstand */
+    --bs-modal-header-padding-y: 0.8rem;
+    --bs-modal-header-padding-x: 1rem;
+    --bs-modal-footer-gap: 0.5rem;
+    --bs-modal-border-radius: var(--bs-border-radius-lg);
+    /* Etwas größere Rundung für Modals */
+
+    /* Alerts - Kompakter */
+    --bs-alert-padding-y: 0.7rem;
+    --bs-alert-padding-x: 0.9rem;
+    --bs-alert-border-width: 0;
+    /* Keine äußere Border */
+    --bs-alert-border-radius: var(--bs-border-radius);
+    --bs-alert-link-font-weight: 500;
+
+    /* Pagination - Kompakter */
+    --bs-pagination-padding-y: 0.3rem;
+    --bs-pagination-padding-x: 0.6rem;
+    --bs-pagination-font-size: 0.9rem;
+
+    /* Navs */
+    --bs-nav-link-padding-y: 0.4rem;
+    --bs-nav-link-padding-x: 0.8rem;
+    --bs-nav-tabs-border-radius: var(--bs-border-radius);
+}
+
+/* ========================================
+   2. Zusätzliche Overrides & Verfeinerungen
+   ======================================== */
+
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Etwas Abstand zwischen Sidebar und Hauptinhalt (optional) */
+.sidebar {
+    padding-right: 20px;
+    /* Beispiel */
+    background-color: var(--bs-light);
+    /* Sidebar Hintergrund */
+    border-right: 1px solid var(--bs-border-color);
+    /* Weitere Sidebar-Stile wie Höhe, Sticky etc. bleiben erhalten oder hier anpassen */
+    height: calc(100vh - 56px);
+    /* Höhe anpassen, falls Header feste Höhe hat */
+    overflow-y: auto;
+    position: sticky;
+    top: 56px;
+    /* Beispiel: Platz für Header */
+}
+
+@media (max-width: 767.98px) {
+    .sidebar {
+        height: auto;
+        position: static;
+        border-right: none;
+        border-bottom: 1px solid var(--bs-border-color);
+        padding-right: 15px;
+        /* Standard Col Padding */
+    }
+}
+
+.main-content {
+    padding-left: 20px;
+    /* Beispiel */
+}
+
+@media (max-width: 767.98px) {
+    .main-content {
+        padding-left: 15px;
+        /* Standard Col Padding */
+    }
+}
+
+
+/* Buttons - Leichter Hover-Effekt */
+.btn:hover {
+    filter: brightness(95%);
+    /* Leicht abdunkeln bei Hover */
+    box-shadow: var(--bs-btn-hover-box-shadow), 0 2px 4px rgba(0, 0, 0, 0.08);
+    /* Zusätzlicher Schatten */
+}
+
+/* Formulare - Visuelle Verbesserungen */
+.form-control,
+.form-select {
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    /* Weichere Übergänge */
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: rgba(var(--bs-primary-rgb), 0.6);
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.15);
+    /* Subtilerer Fokus-Glow */
+}
+
+.form-check-input:focus {
+    border-color: rgba(var(--bs-primary-rgb), 0.6);
+    box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.15);
+}
+
+.form-label {
+    color: #555;
+    /* Leicht abgedunkelte Labels */
+    font-size: 0.85rem;
+}
+
+/* Tabellen - Kopfzeile hervorheben */
+.table>thead>tr>th {
+    font-weight: 600;
+    /* Etwas fetter */
+    text-transform: uppercase;
+    /* Großbuchstaben */
+    font-size: 0.8rem;
+    /* Kleinere Schrift */
+    letter-spacing: 0.5px;
+    border-bottom-width: 2px;
+    /* Dickere Linie unter Kopf */
+    color: var(--bs-secondary);
+    /* Graue Schrift */
+    background-color: #fdfdfd;
+    /* Fast weißer HG */
+    vertical-align: middle;
+}
+
+.table>thead>tr>th a {
+    /* Sortierlinks */
+    color: inherit;
+    text-decoration: none;
+}
+
+.table>thead>tr>th a:hover {
+    color: var(--bs-primary);
+}
+
+/* Editierbare Zellen - Dezenter Hinweis */
+td.editable {
+    cursor: pointer;
+    position: relative;
+}
+
+td.editable:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.05) !important;
+    /* Leichter Blauton bei Hover */
+}
+
+td.editable::after {
+    content: '\270E';
+    /* Pencil */
+    font-size: 0.7em;
+    color: var(--bs-secondary);
+    position: absolute;
+    right: 8px;
+    top: calc(50% - 0.5em);
+    /* Vertikal zentriert */
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+td.editable:hover::after {
+    opacity: 0.6;
+}
+
+/* Cards - Header/Footer nahtloser */
+.card-header,
+.card-footer {
+    background-color: transparent;
+    /* Kein extra Hintergrund */
+    border-color: var(--bs-border-color-translucent);
+    /* Leichterer Rand */
+}
+
+.card-header {
+    padding-top: 0.8rem;
+    padding-bottom: 0.8rem;
+}
+
+.card-header h4 {
+    /* Oder andere H-Tags im Header */
+    font-size: 1.1rem;
+    /* Etwas kleinere Card-Titel */
+    font-weight: 500;
+    margin-bottom: 0;
+}
+
+.card-header.bg-primary {
+    /* Farbige Header beibehalten, aber mit leichterem Farbton */
+    background-color: rgba(var(--bs-primary-rgb), 0.9);
+    color: white;
+    border-bottom-color: rgba(var(--bs-primary-rgb), 0.5);
+}
+
+/* Alerts - Linke Border für Farbakzent */
+.alert {
+    border-left: 4px solid;
+    /* Dicke linke Border für Farbe */
+    box-shadow: var(--bs-box-shadow-sm);
+}
+
+.alert-primary {
+    border-left-color: var(--bs-primary);
+}
+
+.alert-secondary {
+    border-left-color: var(--bs-secondary);
+}
+
+.alert-success {
+    border-left-color: var(--bs-success);
+}
+
+.alert-info {
+    border-left-color: var(--bs-info);
+}
+
+.alert-warning {
+    border-left-color: var(--bs-warning);
+}
+
+.alert-danger {
+    border-left-color: var(--bs-danger);
+}
+
+.alert-light {
+    border-left-color: #ccc;
+}
+
+/* Angepasste Farbe für Light */
+.alert-dark {
+    border-left-color: var(--bs-dark);
+}
+
+/* Code Blöcke */
+pre {
+    background-color: #fbfbfb;
+    border: 1px solid #eee;
+    padding: 0.8rem;
+    font-size: 0.85rem;
+    border-radius: var(--bs-border-radius-sm);
+}
+
+/* Navbar (Beispiel, falls in header.php verwendet) */
+.navbar {
+    box-shadow: var(--bs-box-shadow-sm);
+    min-height: 56px;
+    /* Beispielhöhe */
+}
+
+/* .navbar-brand, .navbar-nav .nav-link { ... } */

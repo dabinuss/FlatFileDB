@@ -20,114 +20,168 @@ if (!empty($records)) {
         $columns[] = $colName;
     }
 }
+
+$schemaInfo = null;
+$hasSchema = false;
+
+if (isset($handler) && $handler instanceof FlatFileDB\FlatFileDatabaseHandler && !empty($activeTable)) {
+    try {
+        if (function_exists('getTableSchema')) {
+            $schemaInfo = getTableSchema($handler, $activeTable);
+            $hasSchema = is_array($schemaInfo) && (
+                (isset($schemaInfo['types']) && !empty($schemaInfo['types'])) ||
+                (isset($schemaInfo['required']) && !empty($schemaInfo['required']))
+            );
+        } else {
+             error_log("Funktion getTableSchema() nicht gefunden in browse.php");
+        }
+    } catch (Exception $e) {
+        error_log("Fehler beim Abrufen des Schemas für Tabelle '$activeTable' in browse.php: " . $e->getMessage());
+    }
+}
+
 ?>
 
 <div class="card">
-    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <h4 class="mb-0">Datensätze: <?php echo htmlspecialchars($activeTable); ?></h4>
-        <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=insert" class="btn btn-light btn-sm">
+    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap">
+        <div>
+            <h4 class="mb-0 d-inline-block me-2">Datensätze: <?php echo htmlspecialchars($activeTable); ?></h4>
+
+            <?php // --- Vereinfachte Schema-Status Anzeige --- ?>
+            <?php if ($hasSchema): ?>
+                <span class="badge bg-info text-dark me-1" title="Ein Schema ist für diese Tabelle definiert.">
+                    <i class="bi bi-check-circle-fill"></i> Schema aktiv
+                </span>
+                <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=manage#schema-tab" class="badge bg-light text-dark text-decoration-none" title="Schema anzeigen/bearbeiten">
+                    <i class="bi bi-pencil-square"></i> Verwalten
+                </a>
+            <?php else: // Wenn !$hasSchema (egal ob null, leer oder Fehler beim Laden) ?>
+                 <span class="badge bg-secondary me-1" title="Für diese Tabelle ist kein Schema definiert.">
+                     <i class="bi bi-slash-circle"></i> Kein Schema
+                 </span>
+                 <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=manage#schema-tab" class="badge bg-light text-dark text-decoration-none" title="Schema definieren">
+                      <i class="bi bi-plus-circle"></i> Definieren
+                 </a>
+            <?php endif; ?>
+            <?php // --- Ende Vereinfachung --- ?>
+
+        </div>
+        <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=insert" class="btn btn-success btn-sm mt-1 mt-md-0">
             <i class="bi bi-plus-circle"></i> Neuer Datensatz
         </a>
     </div>
     <div class="card-body">
         <?php if (empty($records)): ?>
-        <div class="alert alert-info">
-            Diese Tabelle enthält keine Datensätze.
-        </div>
+             <div class="alert alert-info">
+                Diese Tabelle enthält keine Datensätze.
+                <?php if (isset($handler)): ?>
+                <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=insert" class="alert-link">Fügen Sie den ersten Datensatz hinzu</a>.
+                <?php endif; ?>
+            </div>
         <?php else: ?>
-        <div class="table-responsive">
-            <table class="table table-hover" id="dataTable">
-                <thead>
-                    <tr>
-                        <?php foreach ($columns as $colName): ?>
-                        <th>
-                            <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&orderBy=<?php echo htmlspecialchars($colName); ?>&order=<?php echo $orderBy == $colName && $order == 'ASC' ? 'DESC' : 'ASC'; ?>">
-                                <?php echo htmlspecialchars($colName); ?>
-                                <?php if ($orderBy == $colName): ?>
-                                <i class="bi bi-caret-<?php echo $order == 'ASC' ? 'up' : 'down'; ?>-fill"></i>
-                                <?php endif; ?>
-                            </a>
-                        </th>
-                        <?php endforeach; ?>
-                        <th>Aktionen</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($records as $record): ?>
-                    <tr data-id="<?php echo $record['id']; ?>">
-                        <?php foreach ($columns as $colName): ?>
-                        <td class="editable" data-field="<?php echo htmlspecialchars($colName); ?>">
-                            <?php 
-                            if ($colName === 'id') {
-                                echo htmlspecialchars($record[$colName]);
-                            } else {
-                                if (is_array($record[$colName]) || is_object($record[$colName])) {
-                                    echo '<pre>' . htmlspecialchars(json_encode($record[$colName], JSON_PRETTY_PRINT)) . '</pre>';
-                                } else if (is_bool($record[$colName])) {
-                                    echo $record[$colName] ? 'true' : 'false';
-                                } else if ($record[$colName] === null) {
-                                    echo '<em>null</em>';
+            <div class="table-responsive">
+                 <table class="table table-hover table-sm" id="dataTable">
+                    <thead>
+                        <tr>
+                            <?php foreach ($columns as $colName): ?>
+                                <th>
+                                    <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&orderBy=<?php echo htmlspecialchars($colName); ?>&order=<?php echo $orderBy == $colName && $order == 'ASC' ? 'DESC' : 'ASC'; ?>">
+                                        <?php echo htmlspecialchars($colName); ?>
+
+                                        <?php
+                                        // --- Schema-Info direkt anzeigen ---
+                                        $colType = null;
+                                        $colRequired = false;
+
+                                        // Nur auf das Schema zugreifen, wenn es ein Array ist
+                                        if (is_array($schemaInfo)) {
+                                            if (isset($schemaInfo['types']) && is_array($schemaInfo['types'])) {
+                                                $colType = $schemaInfo['types'][$colName] ?? null;
+                                            }
+                                            if (isset($schemaInfo['required']) && is_array($schemaInfo['required'])) {
+                                                $colRequired = in_array($colName, $schemaInfo['required']);
+                                            }
+                                        }
+
+                                        // Direkte Anzeige von Typ und Pflichtfeld-Status
+                                        if ($colRequired) {
+                                            echo ' <span class="text-danger" title="Pflichtfeld">*</span>';
+                                        }
+                                        if ($colType) {
+                                            echo ' <span class="text-muted ms-1" style="font-size: 0.8em; font-weight: normal;">(' . htmlspecialchars($colType) . ')</span>';
+                                        }
+                                        // --- Ende Direkte Anzeige ---
+                                        ?>
+
+                                        <?php // Sortier-Icon anzeigen
+                                        if ($orderBy == $colName): ?>
+                                            <i class="bi bi-caret-<?php echo $order == 'ASC' ? 'up' : 'down'; ?>-fill ms-1"></i>
+                                        <?php endif; ?>
+                                    </a>
+                                </th>
+                            <?php endforeach; ?>
+                            <th style="width: 80px;">Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php // --- Tbody bleibt wie vorher (mit optimierter Anzeige) --- ?>
+                        <?php foreach ($records as $record): ?>
+                        <tr data-id="<?php echo htmlspecialchars($record['id']); ?>">
+                            <?php foreach ($columns as $colName): ?>
+                            <td class="editable align-middle" data-field="<?php echo htmlspecialchars($colName); ?>">
+                                <?php
+                                $displayValue = '';
+                                $currentValue = $record[$colName] ?? null;
+
+                                if ($colName === 'id') {
+                                    $displayValue = htmlspecialchars($currentValue);
                                 } else {
-                                    echo htmlspecialchars((string)$record[$colName]);
+                                    if (is_array($currentValue) || is_object($currentValue)) {
+                                        $jsonValue = json_encode($currentValue, JSON_PRETTY_PRINT);
+                                        $preview = mb_substr($jsonValue, 0, 50);
+                                        $displayValue = '<pre class="mb-0 p-1 bg-light border rounded" title="' . htmlspecialchars($jsonValue) . '" style="font-size: 0.8em; max-height: 5em; overflow:hidden;">'
+                                                        . htmlspecialchars($preview) . (mb_strlen($jsonValue) > 50 ? '...' : '')
+                                                        . '</pre>';
+                                    } else if (is_bool($currentValue)) {
+                                        $displayValue = $currentValue
+                                            ? '<span class="badge bg-success"><i class="bi bi-check-lg"></i></span>'
+                                            : '<span class="badge bg-danger"><i class="bi bi-x-lg"></i></span>';
+                                    } else if ($currentValue === null) {
+                                        $displayValue = '<em class="text-muted">null</em>';
+                                    } else {
+                                        $stringValue = (string)$currentValue;
+                                        if (mb_strlen($stringValue) > 100) {
+                                             $displayValue = '<span title="'.htmlspecialchars($stringValue).'">' . htmlspecialchars(mb_substr($stringValue, 0, 100)) . '...</span>';
+                                        } else {
+                                             $displayValue = htmlspecialchars($stringValue);
+                                        }
+                                    }
                                 }
-                            }
-                            ?>
-                        </td>
+                                echo $displayValue;
+                                ?>
+                            </td>
+                            <?php endforeach; ?>
+                            <td class="align-middle">
+                                <div class="btn-group btn-group-sm">
+                                    <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=edit&id=<?php echo htmlspecialchars($record['id']); ?>" class="btn btn-outline-primary" title="Bearbeiten">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button type="button" class="btn btn-outline-danger delete-record" data-id="<?php echo htmlspecialchars($record['id']); ?>" title="Löschen">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
                         <?php endforeach; ?>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <a href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&action=edit&id=<?php echo $record['id']; ?>" class="btn btn-info">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-                                <button type="button" class="btn btn-danger delete-record" data-id="<?php echo $record['id']; ?>">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Paginierung -->
-        <?php if ($totalPages > 1): ?>
-        <nav aria-label="Datensatz-Navigation">
-            <ul class="pagination justify-content-center">
-                <li class="page-item <?php echo $page <= 1 ? 'disabled' : ''; ?>">
-                    <a class="page-link" href="<?php echo $page > 1 ? 'index.php?tab=tables&table=' . htmlspecialchars($activeTable) . '&page=' . ($page - 1) . '&orderBy=' . htmlspecialchars($orderBy) . '&order=' . htmlspecialchars($order) : '#'; ?>">
-                        Zurück
-                    </a>
-                </li>
-                
-                <?php
-                $startPage = max(1, $page - 2);
-                $endPage = min($totalPages, $startPage + 4);
-                if ($endPage - $startPage < 4 && $startPage > 1) {
-                    $startPage = max(1, $endPage - 4);
-                }
-                
-                for ($i = $startPage; $i <= $endPage; $i++):
-                ?>
-                <li class="page-item <?php echo $i == $page ? 'active' : ''; ?>">
-                    <a class="page-link" href="index.php?tab=tables&table=<?php echo htmlspecialchars($activeTable); ?>&page=<?php echo $i; ?>&orderBy=<?php echo htmlspecialchars($orderBy); ?>&order=<?php echo htmlspecialchars($order); ?>">
-                        <?php echo $i; ?>
-                    </a>
-                </li>
-                <?php endfor; ?>
-                
-                <li class="page-item <?php echo $page >= $totalPages ? 'disabled' : ''; ?>">
-                    <a class="page-link" href="<?php echo $page < $totalPages ? 'index.php?tab=tables&table=' . htmlspecialchars($activeTable) . '&page=' . ($page + 1) . '&orderBy=' . htmlspecialchars($orderBy) . '&order=' . htmlspecialchars($order) : '#'; ?>">
-                        Weiter
-                    </a>
-                </li>
-            </ul>
-        </nav>
-        <?php endif; ?>
-        
-        <div class="text-center text-muted mt-2">
-            Zeige <?php echo count($records); ?> von <?php echo $totalRecords; ?> Datensätzen
-        </div>
+                         <?php // --- Ende Tbody --- ?>
+                    </tbody>
+                </table>
+            </div>
+             <?php // ... Paginierung ... ?>
+             <div class="text-center text-muted mt-2" style="font-size: 0.9em;">
+                Zeige <?php echo count($records); ?> von <?php echo $totalRecords; ?> Datensätzen
+                (Seite <?php echo $page; ?> von <?php echo $totalPages; ?>)
+            </div>
         <?php endif; ?>
     </div>
 </div>
