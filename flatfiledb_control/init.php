@@ -12,7 +12,18 @@ error_reporting(E_ALL); // Alle Fehler melden
 // Konfiguration laden
 require_once 'config.php';
 
-// Hilfsfunktionen einbinden
+// FlatFileDB-Klassen einbinden
+require_once DB_BASE_PATH . '/FlatFileDBConstants.class.php';
+require_once DB_BASE_PATH . '/FlatFileConfig.class.php';
+require_once DB_BASE_PATH . '/FlatFileDatabase.class.php';
+require_once DB_BASE_PATH . '/FlatFileDatabaseHandler.class.php';
+require_once DB_BASE_PATH . '/FlatFileDBStatistics.class.php';
+require_once DB_BASE_PATH . '/FlatFileFileManager.class.php';
+require_once DB_BASE_PATH . '/FlatFileIndexBuilder.class.php';
+require_once DB_BASE_PATH . '/FlatFileTableEngine.class.php';
+require_once DB_BASE_PATH . '/FlatFileTransactionLog.class.php';
+require_once DB_BASE_PATH . '/FlatFileValidator.class.php';
+
 require_once 'includes/db_functions.php';
 
 $currentDbName = null;
@@ -55,18 +66,6 @@ if (!$databaseExists) {
         $databaseExists = false;
     }
 }
-
-// FlatFileDB-Klassen einbinden
-require_once DB_BASE_PATH . '/FlatFileConfig.class.php';
-require_once DB_BASE_PATH . '/FlatFileDatabase.class.php';
-require_once DB_BASE_PATH . '/FlatFileDatabaseHandler.class.php';
-require_once DB_BASE_PATH . '/FlatFileDBConstants.class.php';
-require_once DB_BASE_PATH . '/FlatFileDBStatistics.class.php';
-require_once DB_BASE_PATH . '/FlatFileFileManager.class.php';
-require_once DB_BASE_PATH . '/FlatFileIndexBuilder.class.php';
-require_once DB_BASE_PATH . '/FlatFileTableEngine.class.php';
-require_once DB_BASE_PATH . '/FlatFileTransactionLog.class.php';
-require_once DB_BASE_PATH . '/FlatFileValidator.class.php';
 
 $db = null;
 $handler = null;

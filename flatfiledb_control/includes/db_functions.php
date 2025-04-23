@@ -560,117 +560,70 @@ function deleteDirectory($dir)
 function getAllDatabases($basePath = DATA_DIR)
 {
     $databases = [];
-    // Cache für Dateistatus löschen, um sicherzustellen, dass wir aktuelle Infos bekommen
-    clearstatcache(); // <-- NEU
+    clearstatcache();
 
-    if (!is_dir($basePath)) {
-        error_log("getAllDatabases: Basisverzeichnis nicht gefunden oder kein Verzeichnis: $basePath");
-        return $databases;
-    }
-    if (!is_readable($basePath)) {
-        error_log("getAllDatabases: Basisverzeichnis nicht lesbar: $basePath");
+    if (!is_dir($basePath) || !is_readable($basePath)) {
+        error_log("getAllDatabases: Basisverzeichnis nicht gefunden oder nicht lesbar: $basePath");
         return $databases;
     }
 
-    // Sicherere Methode, Verzeichnisse zu lesen
-    $items = @scandir($basePath); // <-- NEU: Fehler unterdrücken und prüfen
+    $items = @scandir($basePath);
     if ($items === false) {
         error_log("getAllDatabases: Fehler beim Lesen des Verzeichnisses mit scandir: $basePath");
-        return $databases; // <-- NEU: Abbruch bei Fehler
+        return $databases;
     }
 
-    $directories = [];
     foreach ($items as $item) {
-        // Überspringe '.' und '..' sowie versteckte Dateien/Verzeichnisse
-        if ($item === '.' || $item === '..' || strpos($item, '.') === 0) {
+        if ($item === '.' || $item === '..') {
             continue;
         }
-        $fullPath = $basePath . DIRECTORY_SEPARATOR . $item;
-        // Explizit prüfen, ob es ein Verzeichnis ist
-        if (is_dir($fullPath)) { // <-- Stellt sicher, dass es ein Verzeichnis ist
-            $directories[] = $fullPath;
+        $dbPath = $basePath . DIRECTORY_SEPARATOR . $item;
+
+        // Prüfe NUR, ob es ein Verzeichnis ist
+        if (is_dir($dbPath)) {
+            $name = basename($dbPath);
+            $info = [
+                'name' => $name,
+                'path' => $dbPath,
+                'size' => 'N/A',
+                'tables' => 0, // Standard
+                'created' => 'N/A'
+            ];
+
+            // Größe (wie vorher)
+            try {
+                if (function_exists('directorySize')) {
+                    $info['size'] = formatBytes(directorySize($dbPath));
+                }
+            } catch (Exception $e) { /* Fehler loggen */ }
+
+            // Erstellungsdatum (Fallback auf Verzeichniszeit)
+            $info['created'] = date("Y-m-d H:i:s", @filectime($dbPath) ?: time());
+            // Optional: Versuche immer noch config.json zu lesen, falls vorhanden
+            $configFile = $dbPath . '/config.json'; // Potenziell veraltete Konvention
+            if (file_exists($configFile) && is_readable($configFile)) {
+                 $content = @file_get_contents($configFile);
+                 if($content) {
+                    $config = json_decode($content, true);
+                    if ($config && isset($config['created'])) $info['created'] = $config['created'];
+                 }
+            }
+
+            // Tabellenzahl: Instanziiere DB und frage Manifest ab
+            try {
+                // Temporäre Instanz NUR zum Zählen
+                $tempDb = new FlatFileDB\FlatFileDatabase($dbPath);
+                $tableNames = $tempDb->getTableNames(); // Liest tables.json
+                $info['tables'] = count($tableNames);
+                unset($tempDb); // Instanz wieder freigeben
+            } catch (Exception $e) {
+                error_log("getAllDatabases: Fehler beim Zählen der Tabellen für '$name': " . $e->getMessage());
+                $info['tables'] = 'Fehler';
+            }
+
+            $databases[] = $info;
         }
     }
-    // Debug: Gefundene Verzeichnisse loggen
-    // error_log("getAllDatabases: Gefundene Verzeichnisse in $basePath: " . print_r($directories, true));
-
-
-    foreach ($directories as $dir) {
-        // Erneutes Cache-Clearing vor jeder Prüfung kann helfen, ist aber langsam
-        // clearstatcache(true, $dir);
-        $name = basename($dir);
-        $configFile = $dir . '/config.json';
-        $tablesDir = $dir . '/tables'; // <-- KORRIGIERT: Pfad zum Unterverzeichnis
-
-        // Prüfe, ob notwendige Dateien/Ordner existieren, um es als gültige DB zu werten
-        // Mindestens config.json oder tables/tables.json sollte da sein? Oder nur das Verzeichnis?
-        // Hier nehmen wir an, dass das Verzeichnis selbst reicht, wenn es im DATA_DIR liegt.
-
-        $info = [
-            'name' => $name,
-            'path' => $dir, // <-- Wichtig: Korrekter Pfad für die DB-Instanz
-            'size' => 'N/A',
-            'tables' => 0,
-            'created' => 'N/A' // Geändert zu N/A statt leerem String
-        ];
-
-        // Größe (optional, bleibt bei Fehler auf N/A)
-        try {
-            if (function_exists('directorySize')) { // <-- Prüfen ob Funktion existiert
-                $info['size'] = formatBytes(directorySize($dir));
-            }
-        } catch (Exception $e) {
-            error_log("Fehler bei directorySize für '$dir': " . $e->getMessage());
-        }
-
-        // Konfig lesen
-        if (file_exists($configFile) && is_readable($configFile)) {
-            $content = @file_get_contents($configFile);
-            if ($content !== false) {
-                $config = json_decode($content, true);
-                if ($config && isset($config['created'])) {
-                    $info['created'] = $config['created'];
-                } else {
-                    error_log("getAllDatabases: Konnte 'created' nicht aus config.json für '$name' lesen oder JSON ungültig.");
-                }
-            } else {
-                error_log("getAllDatabases: Konnte config.json für '$name' nicht lesen (file_get_contents fehlgeschlagen).");
-            }
-        } else {
-            error_log("getAllDatabases: config.json für '$name' nicht gefunden oder nicht lesbar.");
-            // Optional: Lese Erstellungsdatum des Verzeichnisses als Fallback
-            $info['created'] = date("Y-m-d H:i:s", filectime($dir));
-        }
-
-        // Tabellenzählung via glob() im Unterverzeichnis 'tables'
-        $info['tables'] = 0; // Reset für jeden Durchlauf
-        if (is_dir($tablesDir) && is_readable($tablesDir)) { // <-- Prüfe 'tables' Unterverzeichnis
-            // Zähle nur *.json Dateien, die KEINE Meta-Dateien sind und NICHT tables.json
-            $tableFiles = glob($tablesDir . '/*.json');
-            if ($tableFiles !== false) {
-                $count = 0;
-                foreach ($tableFiles as $file) {
-                    // Zähle nur .json Dateien, die NICHT _meta.json oder tables.json sind
-                    if (basename($file) !== 'tables.json' && strpos(basename($file), '_meta.json') === false) {
-                        $count++;
-                    }
-                }
-                $info['tables'] = $count;
-            } else {
-                error_log("getAllDatabases: Fehler beim Lesen des 'tables'-Verzeichnisses für '$name' mit glob().");
-                $info['tables'] = 'Fehler'; // Oder 0?
-            }
-        } else {
-            error_log("getAllDatabases: 'tables'-Verzeichnis für '$name' nicht gefunden oder nicht lesbar: $tablesDir");
-        }
-
-
-        $databases[] = $info;
-    } // Ende foreach
-
-    // Debug: Ergebnis loggen
-    // error_log("getAllDatabases: Ergebnis: " . print_r($databases, true));
-
     return $databases;
 }
 
